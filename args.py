@@ -49,7 +49,7 @@ def make_args():
                         help='whether normalize_adj')
 
     parser.add_argument('--lr', dest='lr', default=1e-2, type=float)
-    parser.add_argument('--epoch_num', dest='epoch_num', default=1001, type=int)
+    parser.add_argument('--epoch_num', dest='epoch_num', default=2001, type=int)
     parser.add_argument('--repeat_num', dest='repeat_num', default=2, type=int) # 10
     parser.add_argument('--epoch_log', dest='epoch_log', default=10, type=int)
 
