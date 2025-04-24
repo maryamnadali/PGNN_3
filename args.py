@@ -41,7 +41,9 @@ def make_args():
     parser.add_argument('--dropout_no', dest='dropout', action='store_false',
                         help='whether dropout, default 0.5')
     parser.add_argument('--approximate', dest='approximate', default=-1, type=int,
-                        help='k-hop shortest path distance. -1 means exact shortest path') # -1, 2
+                        help='k-hop shortest path distance. -1 means exact shortest path') # -1, 2  
+    # If approximate == -1 → use exact pairwise distance computation (P-GNN-E)
+    # If approximate >= 0 → use anchor-based approximate distance (P-GNN-F) in paper fast = 2
 
     parser.add_argument('--batch_size', dest='batch_size', default=8, type=int) # implemented via accumulating gradient
     parser.add_argument('--layer_num', dest='layer_num', default=2, type=int)
