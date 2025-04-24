@@ -18,9 +18,9 @@ def make_args():
                         help='whether use cpu')
     parser.add_argument('--cuda', dest='cuda', default='0', type=str)
 
-    parser.add_argument('--task', dest='task', default='both', type=str,
-                    choices=['link', 'link_pair', 'both'],
-                    help='Task type: link, link_pair, or both')  #choose task
+    #parser.add_argument('--task', dest='task', default='both', type=str,
+                    #choices=['link', 'link_pair', 'both'],
+                    #help='Task type: link, link_pair, or both')  #choose task
 
     # dataset
     parser.add_argument('--remove_link_ratio', dest='remove_link_ratio', default=0.2, type=float)
