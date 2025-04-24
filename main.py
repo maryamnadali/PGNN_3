@@ -41,6 +41,8 @@ if __name__ == '__main__':
                 datasets_name = ['communities', 'email', 'protein']
         else:
             datasets_name = [args.dataset]
+        #to check task
+        print(f"\n🔁 Now running TASK: {task.upper()} on dataset(s): {datasets_name}\n")
         for dataset_name in datasets_name:
             # if dataset_name in ['communities','grid']:
             #     args.cache = False
