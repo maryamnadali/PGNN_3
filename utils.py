@@ -253,17 +253,18 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
         data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
 
 
-    
-    #elif method == 'degree':
+    """
+    elif method == 'degree':
         # انتخاب گره‌هایی که degree بالاتری دارن به‌عنوان anchor
-     #   import math
-      #  G = nx.from_numpy_array(data.dists.cpu().numpy())
-       # m = int(math.log2(data.num_nodes))
-        #anchor_num = m * m  # مثل random
-        #degrees = dict(G.degree())
-        #top_nodes = sorted(degrees, key=degrees.get, reverse=True)[:anchor_num]
-        #anchorset_id = [[n] for n in top_nodes]  # هر anchor فقط یک گره
-        #data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+        import math
+        G = nx.from_numpy_array(data.dists.cpu().numpy())
+        m = int(math.log2(data.num_nodes))
+        anchor_num = m * m  # مثل random
+        degrees = dict(G.degree())
+        top_nodes = sorted(degrees, key=degrees.get, reverse=True)[:anchor_num]
+        anchorset_id = [[n] for n in top_nodes]  # هر anchor فقط یک گره
+        data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+    """
 
         
     for i in range(anchor_size_num):
