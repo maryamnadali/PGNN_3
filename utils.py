@@ -234,16 +234,33 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
         anchorset_id = get_random_anchorset(data.num_nodes, c=1)
         data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
 
-    elif method == 'degree':
+    #elif method == 'degree':
         # انتخاب گره‌هایی که degree بالاتری دارن به‌عنوان anchor
-        import math
-        G = nx.from_numpy_array(data.dists.cpu().numpy())
-        m = int(math.log2(data.num_nodes))
-        anchor_num = m * m  # مثل random
-        degrees = dict(G.degree())
-        top_nodes = sorted(degrees, key=degrees.get, reverse=True)[:anchor_num]
-        anchorset_id = [[n] for n in top_nodes]  # هر anchor فقط یک گره
-        data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+     #   import math
+      #  G = nx.from_numpy_array(data.dists.cpu().numpy())
+       # m = int(math.log2(data.num_nodes))
+        #anchor_num = m * m  # مثل random
+        #degrees = dict(G.degree())
+        #top_nodes = sorted(degrees, key=degrees.get, reverse=True)[:anchor_num]
+        #anchorset_id = [[n] for n in top_nodes]  # هر anchor فقط یک گره
+        #data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+    elif method == 'degree':
+    import math
+    m = int(math.log2(data.num_nodes))
+    anchor_num = m * m  # مثل random
+
+    # Compute degree directly from edge_index
+    degrees = torch.zeros(data.num_nodes, device=data.edge_index.device)
+    degrees.scatter_add_(0, data.edge_index[0], torch.ones(data.edge_index.size(1), device=data.edge_index.device))
+
+    # Select top-k nodes with highest degrees
+    topk_nodes = torch.topk(degrees, anchor_num).indices
+
+    # Build anchorset_id
+    anchorset_id = [[n.item()] for n in topk_nodes]
+
+    data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+
         
     for i in range(anchor_size_num):
         # print("i=",i)
