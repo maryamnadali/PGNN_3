@@ -236,21 +236,22 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
 
 
     elif method == 'degree':
-    import math
-    m = int(math.log2(data.num_nodes))
-    anchor_num = m * m  # مثل random
+        import math
+        m = int(math.log2(data.num_nodes))
+        anchor_num = m * m  # مثل random
+    
+        # Compute degree directly from edge_index
+        degrees = torch.zeros(data.num_nodes, device=data.edge_index.device)
+        degrees.scatter_add_(0, data.edge_index[0], torch.ones(data.edge_index.size(1), device=data.edge_index.device))
+    
+        # Select top-k nodes with highest degrees
+        topk_nodes = torch.topk(degrees, anchor_num).indices
+    
+        # Build anchorset_id
+        anchorset_id = [[n.item()] for n in topk_nodes]
+    
+        data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
 
-    # Compute degree directly from edge_index
-    degrees = torch.zeros(data.num_nodes, device=data.edge_index.device)
-    degrees.scatter_add_(0, data.edge_index[0], torch.ones(data.edge_index.size(1), device=data.edge_index.device))
-
-    # Select top-k nodes with highest degrees
-    topk_nodes = torch.topk(degrees, anchor_num).indices
-
-    # Build anchorset_id
-    anchorset_id = [[n.item()] for n in topk_nodes]
-
-    data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
 
     
     #elif method == 'degree':
