@@ -229,10 +229,42 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
             anchors = np.random.choice(data.num_nodes, size=(layer_num, anchor_num_per_size, anchor_size), replace=True)
             data.anchor_set.append(anchors)
 
+    
     elif method == 'random':
         # روش فعلی، یعنی استفاده از get_random_anchorset
         anchorset_id = get_random_anchorset(data.num_nodes, c=1)
         data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+
+    
+    elif method == 'betweenness':
+        import math
+        import networkx as nx
+
+        m = int(math.log2(data.num_nodes))
+        anchor_num = m * m  # مثل random
+
+        # ساخت گراف NetworkX از edge_index
+        G = nx.Graph()
+        edges = data.edge_index.cpu().numpy()
+        G.add_edges_from(edges.T)
+
+        # محاسبه betweenness centrality (نسخه دقیق)
+        centrality = nx.betweenness_centrality(G, normalized=True)
+
+        # تبدیل دیکشنری به tensor
+        centrality_tensor = torch.zeros(data.num_nodes, device=data.edge_index.device)
+        for node, value in centrality.items():
+            centrality_tensor[node] = value
+
+        # انتخاب top-k نودها
+        topk_nodes = torch.topk(centrality_tensor, anchor_num).indices
+
+        # ساخت anchorset_id
+        anchorset_id = [[n.item()] for n in topk_nodes]
+
+        # محاسبه dists_max و dists_argmax
+        data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+
 
     elif method == 'eigenvector':
         import math
