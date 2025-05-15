@@ -389,10 +389,10 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
     # adjacency list برای پیمایش hop
         adj = defaultdict(set)
         for u, v in edge_index.t().tolist():
-        adj[u].add(v)
-        adj[v].add(u)
+            adj[u].add(v)
+            adj[v].add(u)
 
-        selected, marked = [], set()
+            selected, marked = [], set()
 
     # ------------------------------------------------------------
     #  حلقهٔ انتخاب انکرها
