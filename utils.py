@@ -364,6 +364,105 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
             device        # فرض بر این است که device را از قبل تعریف کرده‌ای
     )
 
+    elif method == 'enhanced_degree_coverage':
+    # ------------------------------------------------------------
+    #  تنظیمات
+    # ------------------------------------------------------------
+        from torch_geometric.utils import to_undirected, degree
+        import heapq
+        from collections import defaultdict
+        import math, torch
+
+        hop = 1                     # ← شعاع پوشش (۱-هاپ، ۲-هاپ، …)
+        m = int(math.log2(data.num_nodes))
+        anchor_num = m * m
+
+    # ------------------------------------------------------------
+    #  درجه‌گیری و ساخت داده‌های کمکی
+    # ------------------------------------------------------------
+        edge_index = to_undirected(data.edge_index)
+        deg = degree(edge_index[0], data.num_nodes).cpu()            # درجهٔ هر رأس روی CPU
+
+        heap = [(-deg[i].item(), i) for i in range(data.num_nodes)]  # max-heap  (منفی چون heapq)
+        heapq.heapify(heap)
+
+    # adjacency list برای پیمایش hop
+        adj = defaultdict(set)
+        for u, v in edge_index.t().tolist():
+        adj[u].add(v)
+        adj[v].add(u)
+
+        selected, marked = [], set()
+
+    # ------------------------------------------------------------
+    #  حلقهٔ انتخاب انکرها
+    # ------------------------------------------------------------
+        while heap and len(selected) < anchor_num:
+
+        # ----------- برداشتن همهٔ نودهای با بالاترین درجهٔ فعلی -----------
+            top_nodes = []
+            while heap:
+                d_neg, v = heapq.heappop(heap)
+                if v in marked:
+                    continue
+                deg_max = -d_neg
+                top_nodes.append(v)
+
+            # برداشتن بقیهٔ نودهای با همین درجه
+                while heap and -heap[0][0] == deg_max:
+                    d_neg2, v2 = heapq.heappop(heap)
+                    if v2 not in marked:
+                        top_nodes.append(v2)
+                break     # بعد از جمع کردن هم‌درجه‌ها
+
+            if not top_nodes:
+                break  # هیچ نامزد معتبری نمانده است
+
+        # ----------- تعیین بهترین نود بر اساس «دورترین از انکرهای قبلی» -----------
+            if len(selected) == 0 or len(top_nodes) == 1:
+            # اولین انکر یا فقط یک نامزد وجود دارد
+                next_anchor = top_nodes[0]
+                for u in top_nodes[1:]:
+                    heapq.heappush(heap, (-deg[u].item(), u))     # بقیه را پس می‌دهیم
+            else:
+            # فاصلهٔ هر نامزد تا نزدیک‌ترین انکر قبلی
+                top_tensor = torch.tensor(top_nodes, device=data.dists.device)
+                sel_tensor = torch.tensor(selected, device=data.dists.device)
+                dist_mat   = data.dists[top_tensor][:, sel_tensor]        # شکل (len(top), len(sel))
+                min_dists  = dist_mat.min(dim=1).values                   # نزدیک‌ترین انکر
+                idx        = torch.argmax(min_dists).item()               # دورترین = بزرگ‌ترین حداقل فاصله
+                next_anchor = top_nodes[idx]
+
+            # بقیهٔ نامزدها را به heap برگردان
+                for i, u in enumerate(top_nodes):
+                    if i != idx:
+                        heapq.heappush(heap, (-deg[u].item(), u))
+
+        # ----------- اضافه‌کردن انکر و مارک‌کردن پوشش hop -----------
+            selected.append(next_anchor)
+
+            frontier = {next_anchor}
+            marked.update(frontier)           # شعاع صفر (خودش)
+            for _ in range(hop):              # گسترش تا hop پله
+                nxt = set()
+                for u in frontier:
+                    nxt.update(adj[u])
+                nxt -= marked                 # فقط نودهای جدید
+                if not nxt:
+                    break
+                marked.update(nxt)
+                frontier = nxt
+
+    # ------------------------------------------------------------
+    #  تبدیل به قالب PGNN و محاسبهٔ dists_max / argmax
+    # ------------------------------------------------------------
+        anchorset_id = [[n] for n in selected]                # [[a1], [a2], ...]
+        data.dists_max, data.dists_argmax = get_dist_max(
+            anchorset_id,
+            data.dists,
+            device        # فرض بر این است که device از قبل تعریف شده است
+    )
+
     
         
     for i in range(anchor_size_num):
