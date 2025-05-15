@@ -313,20 +313,58 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
     
         data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
 
-
-    """
-    elif method == 'degree':
-        # انتخاب گره‌هایی که degree بالاتری دارن به‌عنوان anchor
+    elif method == 'degree_coverage':
+        from torch_geometric.utils import to_undirected, degree
+        import heapq
+        from collections import defaultdict
         import math
-        G = nx.from_numpy_array(data.dists.cpu().numpy())
-        m = int(math.log2(data.num_nodes))
-        anchor_num = m * m  # مثل random
-        degrees = dict(G.degree())
-        top_nodes = sorted(degrees, key=degrees.get, reverse=True)[:anchor_num]
-        anchorset_id = [[n] for n in top_nodes]  # هر anchor فقط یک گره
-        data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
-    """
 
+        hop = 1            # ← این عدد را هر بار به شعاع دلخواهت تغییر بده (۱، ۲، ۳، ...)
+
+        m = int(math.log2(data.num_nodes))
+        anchor_num = m * m
+
+        edge_index = to_undirected(data.edge_index)
+        deg = degree(edge_index[0], data.num_nodes).cpu()
+
+        heap = [(-deg[i].item(), i) for i in range(data.num_nodes)]
+        heapq.heapify(heap)
+
+        adj = defaultdict(set)
+        for u, v in edge_index.t().tolist():
+            adj[u].add(v)
+            adj[v].add(u)
+
+        selected, marked = [], set()
+        while heap and len(selected) < anchor_num:
+            _, v = heapq.heappop(heap)
+            if v in marked:
+                continue
+
+            selected.append(v)
+
+        # ــ علامت‌گذاری خودش و همهٔ نودهای تا «hop» پله فاصله ــ
+            frontier = {v}
+            marked.update(frontier)          # لایهٔ صفر (خود انکر)
+            for _ in range(hop):
+                next_frontier = set()
+                for u in frontier:
+                    next_frontier.update(adj[u])
+                next_frontier -= marked      # فقط نودهایی که قبلاً مارک نشده‌اند
+                if not next_frontier:        # اگر دیگر چیزی برای گسترش نیست، تمام
+                    break
+                marked.update(next_frontier)
+                frontier = next_frontier
+        # ــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــ
+
+        anchorset_id = [[n] for n in selected]
+        data.dists_max, data.dists_argmax = get_dist_max(
+            anchorset_id,
+            data.dists,
+            device        # فرض بر این است که device را از قبل تعریف کرده‌ای
+    )
+
+    
         
     for i in range(anchor_size_num):
         # print("i=",i)
