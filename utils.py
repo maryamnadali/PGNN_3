@@ -463,6 +463,82 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
             device        # فرض بر این است که device از قبل تعریف شده است
     )
 
+
+    elif method == 'degree_farthest':
+    # ------------------------------------------------------------
+    #   وارد کردن ماژول‌های لازم
+    # ------------------------------------------------------------
+        from torch_geometric.utils import to_undirected, degree
+        import heapq, math, torch
+
+    # ------------------------------------------------------------
+    #   تعداد انکرها طبق m = log2(N)  →  k = m²
+    # ------------------------------------------------------------
+        m = int(math.log2(data.num_nodes))
+        anchor_num = m * m
+
+    # ------------------------------------------------------------
+    #   درجهٔ هر نود روی CPU
+    # ------------------------------------------------------------
+        edge_index = to_undirected(data.edge_index)
+        deg = degree(edge_index[0], data.num_nodes).cpu()           # 1-D tensor (N,)
+
+    # max-heap از (-degree, node)
+        heap = [(-deg[i].item(), i) for i in range(data.num_nodes)]
+        heapq.heapify(heap)
+
+        selected, selected_set = [], set()                          # انکرهای نهایی
+
+    # ------------------------------------------------------------
+    #   حلقهٔ حریصانه
+    # ------------------------------------------------------------
+        while heap and len(selected) < anchor_num:
+
+        # ---------- برداشتن همهٔ نودهای با بیشترین درجهٔ فعلی ----------
+            d_neg, v = heapq.heappop(heap)
+            if v in selected_set:           # اگر قبلاً انتخاب شده بود، بپر
+                continue
+            deg_max = -d_neg                # مقدار درجهٔ بیشینه
+
+            same_degree = [v]               # نودهای با همین درجه
+            while heap and -heap[0][0] == deg_max:
+                d_neg2, v2 = heapq.heappop(heap)
+                if v2 not in selected_set:  # از قبل انتخاب نشده باشد
+                    same_degree.append(v2)
+
+        # ---------- اگر بیش از یک نامزدِ هم‌درجه داریم ----------
+            if len(selected) > 0 and len(same_degree) > 1:
+                cand_t  = torch.tensor(same_degree, device=data.dists.device)
+                prev_t  = torch.tensor(selected,    device=data.dists.device)
+            # ماتریس فاصلهٔ نامزدها تا انکرهای قبلی
+                dist_mat = data.dists[cand_t][:, prev_t]            # (cand, selected)
+                min_d    = dist_mat.min(dim=1).values               # نزدیک‌ترین انکر
+                idx      = torch.argmax(min_d).item()               # دورترین نامزد
+                next_anchor = same_degree[idx]
+            # بقیهٔ نامزدها را به heap برگردان
+                for i, node in enumerate(same_degree):
+                    if i != idx:
+                        heapq.heappush(heap, (-deg[node].item(), node))
+            else:
+            # فقط یک نامزد یا هیچ انکری از قبل انتخاب نشده
+                next_anchor = same_degree[0]
+                for node in same_degree[1:]:
+                    heapq.heappush(heap, (-deg[node].item(), node))
+
+        # ---------- ثبت انکر ----------
+            selected.append(next_anchor)
+            selected_set.add(next_anchor)
+
+    # ------------------------------------------------------------
+    #   تبدیل به قالب PGNN  و به‌روزرسانی data
+    # ------------------------------------------------------------
+        anchorset_id = [[n] for n in selected]
+        data.dists_max, data.dists_argmax = get_dist_max(
+            anchorset_id,
+            data.dists,
+            device   # ← مطمئن شو متغیّر device را قبل از این بلوک ست کرده‌ای
+    )
+
     
         
     for i in range(anchor_size_num):
