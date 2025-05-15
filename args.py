@@ -61,7 +61,8 @@ def make_args():
 
     #anchor selection
     parser.add_argument('--anchor_method', dest='anchor_method', default='random', type=str,
-                        help='anchor selection: random, fixed4, degree, ...')
+                    choices=['random', 'fixed4', 'degree', 'degree_coverage', 'enhanced_degree_coverage', 'degree_farthest', 'betweenness', 'eigenvector'],
+                    help='anchor selection method')
 
     parser.set_defaults(gpu=True, task='link', model='GCN', dataset='All',
                         cache=False, rm_feature=False,
