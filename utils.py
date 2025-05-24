@@ -228,7 +228,7 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
             anchor_size = 2**(i+1) - 1
             anchors = np.random.choice(data.num_nodes, size=(layer_num, anchor_num_per_size, anchor_size), replace=True)
             data.anchor_set.append(anchors)
-
+        return
     
     elif method == 'random':
         # روش فعلی، یعنی استفاده از get_random_anchorset
@@ -264,6 +264,7 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
 
         # محاسبه dists_max و dists_argmax
         data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+        return
 
 
     elif method == 'eigenvector':
@@ -294,6 +295,7 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
 
         # محاسبه dists_max و dists_argmax
         data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+        return
 
 
     elif method == 'degree':
@@ -312,6 +314,7 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
         anchorset_id = [[n.item()] for n in topk_nodes]
     
         data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+        return
 
     elif method == 'degree_coverage':
         from torch_geometric.utils import to_undirected, degree
@@ -358,11 +361,8 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
         # ــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــــ
 
         anchorset_id = [[n] for n in selected]
-        data.dists_max, data.dists_argmax = get_dist_max(
-            anchorset_id,
-            data.dists,
-            device        # فرض بر این است که device را از قبل تعریف کرده‌ای
-    )
+        data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+        return
 
     elif method == 'enhanced_degree_coverage':
     # ------------------------------------------------------------
@@ -457,11 +457,8 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
     #  تبدیل به قالب PGNN و محاسبهٔ dists_max / argmax
     # ------------------------------------------------------------
         anchorset_id = [[n] for n in selected]                # [[a1], [a2], ...]
-        data.dists_max, data.dists_argmax = get_dist_max(
-            anchorset_id,
-            data.dists,
-            device        # فرض بر این است که device از قبل تعریف شده است
-    )
+        data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+        return
 
 
     elif method == 'degree_farthest':
@@ -533,11 +530,8 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
     #   تبدیل به قالب PGNN  و به‌روزرسانی data
     # ------------------------------------------------------------
         anchorset_id = [[n] for n in selected]
-        data.dists_max, data.dists_argmax = get_dist_max(
-            anchorset_id,
-            data.dists,
-            device   # ← مطمئن شو متغیّر device را قبل از این بلوک ست کرده‌ای
-    )
+        data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+        return
 
     
         
