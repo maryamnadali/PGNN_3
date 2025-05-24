@@ -105,8 +105,9 @@ if __name__ == '__main__':
                     shuffle(data_list)
                     effective_len = len(data_list)//args.batch_size*len(data_list)
                     for id, data in enumerate(data_list[:effective_len]):
+                        #تغییر برای ارگومان
                         if args.permute:
-                            preselect_anchor(data, layer_num=args.layer_num, anchor_num=args.anchor_num, device=device)
+                            preselect_anchor(data, layer_num=args.layer_num, anchor_num=args.anchor_num, device=device, args=args)
                         # print(data)
                         out = model(data)
                         # get_link_mask(data,resplit=False)  # resample negative links
