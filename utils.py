@@ -211,6 +211,7 @@ def get_dist_max(anchorset_id, dist, device):
 
 
 def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device='cpu', args=None):
+    import torch
 
     data.anchor_size_num = anchor_size_num
     data.anchor_set = []
