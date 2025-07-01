@@ -88,7 +88,7 @@ if __name__ == '__main__':
                 output_dim = args.output_dim
                 model = locals()[args.model](input_dim=input_dim, feature_dim=args.feature_dim,
                             hidden_dim=args.hidden_dim, output_dim=output_dim,
-                            feature_pre=args.feature_pre, layer_num=args.layer_num, dropout=args.dropout).to(device)
+                            feature_pre=args.feature_pre, layer_num=args.layer_num, dropout=args.dropout, anchor_use_mode=args.anchor_use_mode).to(device)
                 # loss
                 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=5e-4)
                 if 'link' in args.task:
