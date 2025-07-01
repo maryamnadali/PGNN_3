@@ -11,16 +11,25 @@ import pdb
 
 # # PGNN layer, only pick closest node for message passing
 class PGNN_layer(nn.Module):
-    def __init__(self, input_dim, output_dim,dist_trainable=True):
+    def __init__(self, input_dim, output_dim, dist_trainable=True, anchor_use_mode='concat'):
         super(PGNN_layer, self).__init__()
         self.input_dim = input_dim
         self.dist_trainable = dist_trainable
+        self.anchor_use_mode = anchor_use_mode
 
         if self.dist_trainable:
             self.dist_compute = Nonlinear(1, output_dim, 1)
 
-        self.linear_hidden = nn.Linear(input_dim*2, output_dim)
-        self.linear_out_position = nn.Linear(output_dim,1)
+        # لایه های مناسب برای هر حالت
+        if self.anchor_use_mode == 'attention':
+            self.attention = nn.MultiheadAttention(embed_dim=output_dim, num_heads=4)
+            self.linear_hidden = nn.Linear(input_dim, output_dim)
+        elif self.anchor_use_mode == 'concat':
+            self.linear_hidden = nn.Linear(input_dim*2, output_dim)
+        else:  # sum, mean
+            self.linear_hidden = nn.Linear(input_dim, output_dim)
+
+        self.linear_out_position = nn.Linear(output_dim, 1)
         self.act = nn.ReLU()
 
         for m in self.modules():
@@ -34,29 +43,52 @@ class PGNN_layer(nn.Module):
             dists_max = self.dist_compute(dists_max.unsqueeze(-1)).squeeze()
 
         subset_features = feature[dists_argmax.flatten(), :]
-        subset_features = subset_features.reshape((dists_argmax.shape[0], dists_argmax.shape[1],
-                                                   feature.shape[1]))
-        messages = subset_features * dists_max.unsqueeze(-1)
+        subset_features = subset_features.reshape(
+            (dists_argmax.shape[0], dists_argmax.shape[1], feature.shape[1])
+        )
+        messages = subset_features * dists_max.unsqueeze(-1)  # [N, M, D]
 
-        # print("subset_features=",len(subset_features))
-        # print("dists_max=",dists_max.size())
-        # print("messages=",messages.size())
-
-        self_feature = feature.unsqueeze(1).repeat(1, dists_max.shape[1], 1)
-        messages = torch.cat((messages, self_feature), dim=-1)
-
-        messages = self.linear_hidden(messages).squeeze()
-        messages = self.act(messages) # n*m*d
-        # print("messages=",messages.size())
-
-        # out_position=messages.mean(dim=1)# do this only for ppi,cora,email
-        out_position = self.linear_out_position(messages).squeeze(-1)  # n*m_out
-
-
-        out_structure = torch.mean(messages, dim=1)  # n*d
-
+        # ترکیب بر اساس حالت انتخابی
+        if self.anchor_use_mode == 'attention':
+            # Cross-Attention: Query=feature [N, D], Key/Value=messages [N, M, D]
+            Q = feature.unsqueeze(1).permute(1, 0, 2)   # [1, N, D]
+            K = messages.permute(1, 0, 2)               # [M, N, D]
+            V = messages.permute(1, 0, 2)               # [M, N, D]
+            attn_out, _ = self.attention(Q, K, V)
+            attn_out = attn_out.permute(1, 0, 2).squeeze(1)  # [N, D]
+            out_structure = self.act(self.linear_hidden(attn_out))
+            # برای out_position: میشه از همون خروجی attention یا aggregate خاص استفاده کرد
+            out_position = self.linear_out_position(out_structure).squeeze(-1)
+        elif self.anchor_use_mode == 'concat':
+            self_feature = feature.unsqueeze(1).repeat(1, messages.shape[1], 1)  # [N, M, D]
+            messages_cat = torch.cat((messages, self_feature), dim=-1)            # [N, M, 2D]
+            messages_cat = self.linear_hidden(messages_cat)
+            messages_cat = self.act(messages_cat)
+            out_structure = messages_cat.mean(dim=1)  # [N, D]
+            out_position = self.linear_out_position(messages_cat).mean(dim=1).squeeze(-1)
+        elif self.anchor_use_mode == 'sum':
+            summed = messages + feature.unsqueeze(1)   # [N, M, D]
+            summed = self.linear_hidden(summed)
+            summed = self.act(summed)
+            out_structure = summed.mean(dim=1)         # [N, D]
+            out_position = self.linear_out_position(summed).mean(dim=1).squeeze(-1)
+        elif self.anchor_use_mode == 'mean':
+            meaned = ((messages + feature.unsqueeze(1)) / 2)  # [N, M, D]
+            meaned = self.linear_hidden(meaned)
+            meaned = self.act(meaned)
+            out_structure = meaned.mean(dim=1)                # [N, D]
+            out_position = self.linear_out_position(meaned).mean(dim=1).squeeze(-1)
+        else:
+            # حالت پیش فرض (concat)
+            self_feature = feature.unsqueeze(1).repeat(1, messages.shape[1], 1)
+            messages_cat = torch.cat((messages, self_feature), dim=-1)
+            messages_cat = self.linear_hidden(messages_cat)
+            messages_cat = self.act(messages_cat)
+            out_structure = messages_cat.mean(dim=1)
+            out_position = self.linear_out_position(messages_cat).mean(dim=1).squeeze(-1)
 
         return out_position, out_structure
+
 
 
 ### Non linearity
@@ -257,7 +289,7 @@ class GIN(torch.nn.Module):
 
 class PGNN(torch.nn.Module):
     def __init__(self, input_dim, feature_dim, hidden_dim, output_dim,
-                 feature_pre=True, layer_num=2, dropout=True, **kwargs):
+                 feature_pre=True, layer_num=2, dropout=True, anchor_use_mode='concat', **kwargs):
         super(PGNN, self).__init__()
         self.feature_pre = feature_pre
         self.layer_num = layer_num
@@ -266,12 +298,15 @@ class PGNN(torch.nn.Module):
             hidden_dim = output_dim
         if feature_pre:
             self.linear_pre = nn.Linear(input_dim, feature_dim)
-            self.conv_first = PGNN_layer(feature_dim, hidden_dim)
+            self.conv_first = PGNN_layer(feature_dim, hidden_dim, anchor_use_mode=anchor_use_mode)
         else:
-            self.conv_first = PGNN_layer(input_dim, hidden_dim)
-        if layer_num>1:
-            self.conv_hidden = nn.ModuleList([PGNN_layer(hidden_dim, hidden_dim) for i in range(layer_num - 2)])
-            self.conv_out = PGNN_layer(hidden_dim, output_dim)
+            self.conv_first = PGNN_layer(input_dim, hidden_dim, anchor_use_mode=anchor_use_mode)
+        if layer_num > 1:
+            self.conv_hidden = nn.ModuleList([
+                PGNN_layer(hidden_dim, hidden_dim, anchor_use_mode=anchor_use_mode)
+                for _ in range(layer_num - 2)
+            ])
+            self.conv_out = PGNN_layer(hidden_dim, output_dim, anchor_use_mode=anchor_use_mode)
 
     def forward(self, data):
         x = data.x
@@ -280,17 +315,17 @@ class PGNN(torch.nn.Module):
         x_position, x = self.conv_first(x, data.dists_max, data.dists_argmax)
         if self.layer_num == 1:
             return x_position
-        # x = F.relu(x) # Note: optional!
         if self.dropout:
             x = F.dropout(x, training=self.training)
-        for i in range(self.layer_num-2):
+        for i in range(self.layer_num - 2):
             _, x = self.conv_hidden[i](x, data.dists_max, data.dists_argmax)
-            # x = F.relu(x) # Note: optional!
             if self.dropout:
                 x = F.dropout(x, training=self.training)
         x_position, x = self.conv_out(x, data.dists_max, data.dists_argmax)
         x_position = F.normalize(x_position, p=2, dim=-1)
         return x_position
+
+
 
 class MyAttention(nn.Module):
     def __init__(self, feature_dim):  # feature_dim = Embedding dimension
