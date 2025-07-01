@@ -88,7 +88,7 @@ if __name__ == '__main__':
                 output_dim = args.output_dim
                 model = locals()[args.model](input_dim=input_dim, feature_dim=args.feature_dim,
                             hidden_dim=args.hidden_dim, output_dim=output_dim,
-                            feature_pre=args.feature_pre, layer_num=args.layer_num, dropout=args.dropout, anchor_use_mode=args.anchor_use_mode).to(device)
+                            feature_pre=args.feature_pre, layer_num=args.layer_num, dropout=args.dropout).to(device)
                 # loss
                 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=5e-4)
                 if 'link' in args.task:
@@ -110,17 +110,11 @@ if __name__ == '__main__':
                             preselect_anchor(data, layer_num=args.layer_num, anchor_num=args.anchor_num, device=device, args=args)
                         # print(data)
                         out = model(data)
-                        #print('DEBUG - out.shape =', out.shape)   # ← باید [400, 64] یا مشابه باشد
-                        #exit() 
                         # get_link_mask(data,resplit=False)  # resample negative links
                         edge_mask_train = np.concatenate((data.mask_link_positive_train, data.mask_link_negative_train), axis=-1)
                         nodes_first = torch.index_select(out, 0, torch.from_numpy(edge_mask_train[0,:]).long().to(device))
                         nodes_second = torch.index_select(out, 0, torch.from_numpy(edge_mask_train[1,:]).long().to(device))
-                        prod = nodes_first * nodes_second       # عنصر به عنصر
-                        if prod.dim() > 1:                      # یعنی شکل [E, d] → باید روی d جمع بزنیم
-                            pred = prod.sum(dim=1)              # [E]
-                        else:                                   # شکل [E] → اصلاً جمع لازم نیست
-                            pred = prod
+                        pred = torch.sum(nodes_first * nodes_second, dim=-1)
                         label_positive = torch.ones([data.mask_link_positive_train.shape[1],], dtype=pred.dtype)
                         label_negative = torch.zeros([data.mask_link_negative_train.shape[1],], dtype=pred.dtype)
                         label = torch.cat((label_positive,label_negative)).to(device)
@@ -167,11 +161,7 @@ if __name__ == '__main__':
                             edge_mask_train = np.concatenate((data.mask_link_positive_train, data.mask_link_negative_train), axis=-1)
                             nodes_first = torch.index_select(out, 0, torch.from_numpy(edge_mask_train[0, :]).long().to(device))
                             nodes_second = torch.index_select(out, 0, torch.from_numpy(edge_mask_train[1, :]).long().to(device))
-                            prod = nodes_first * nodes_second       # عنصر به عنصر
-                            if prod.dim() > 1:                      # یعنی شکل [E, d] → باید روی d جمع بزنیم
-                                pred = prod.sum(dim=1)              # [E]
-                            else:                                   # شکل [E] → اصلاً جمع لازم نیست
-                                pred = prod
+                            pred = torch.sum(nodes_first * nodes_second, dim=-1)
                             label_positive = torch.ones([data.mask_link_positive_train.shape[1], ], dtype=pred.dtype)
                             label_negative = torch.zeros([data.mask_link_negative_train.shape[1], ], dtype=pred.dtype)
                             label = torch.cat((label_positive, label_negative)).to(device)
@@ -181,11 +171,7 @@ if __name__ == '__main__':
                             edge_mask_val = np.concatenate((data.mask_link_positive_val, data.mask_link_negative_val), axis=-1)
                             nodes_first = torch.index_select(out, 0, torch.from_numpy(edge_mask_val[0, :]).long().to(device))
                             nodes_second = torch.index_select(out, 0, torch.from_numpy(edge_mask_val[1, :]).long().to(device))
-                            prod = nodes_first * nodes_second       # عنصر به عنصر
-                            if prod.dim() > 1:                      # یعنی شکل [E, d] → باید روی d جمع بزنیم
-                                pred = prod.sum(dim=1)              # [E]
-                            else:                                   # شکل [E] → اصلاً جمع لازم نیست
-                                pred = prod
+                            pred = torch.sum(nodes_first * nodes_second, dim=-1)
                             label_positive = torch.ones([data.mask_link_positive_val.shape[1], ], dtype=pred.dtype)
                             label_negative = torch.zeros([data.mask_link_negative_val.shape[1], ], dtype=pred.dtype)
                             label = torch.cat((label_positive, label_negative)).to(device)
@@ -195,11 +181,7 @@ if __name__ == '__main__':
                             edge_mask_test = np.concatenate((data.mask_link_positive_test, data.mask_link_negative_test), axis=-1)
                             nodes_first = torch.index_select(out, 0, torch.from_numpy(edge_mask_test[0, :]).long().to(device))
                             nodes_second = torch.index_select(out, 0, torch.from_numpy(edge_mask_test[1, :]).long().to(device))
-                            prod = nodes_first * nodes_second       # عنصر به عنصر
-                            if prod.dim() > 1:                      # یعنی شکل [E, d] → باید روی d جمع بزنیم
-                                pred = prod.sum(dim=1)              # [E]
-                            else:                                   # شکل [E] → اصلاً جمع لازم نیست
-                                pred = prod
+                            pred = torch.sum(nodes_first * nodes_second, dim=-1)
                             label_positive = torch.ones([data.mask_link_positive_test.shape[1], ], dtype=pred.dtype)
                             label_negative = torch.zeros([data.mask_link_negative_test.shape[1], ], dtype=pred.dtype)
                             label = torch.cat((label_positive, label_negative)).to(device)
