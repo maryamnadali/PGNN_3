@@ -110,8 +110,8 @@ if __name__ == '__main__':
                             preselect_anchor(data, layer_num=args.layer_num, anchor_num=args.anchor_num, device=device, args=args)
                         # print(data)
                         out = model(data)
-                        #print('DEBUG - out.shape =', out.shape)   # ← باید [400, 64] یا مشابه باشد
-                        #exit() 
+                        print('DEBUG - out.shape =', out.shape)   # ← باید [400, 64] یا مشابه باشد
+                        exit() 
                         # get_link_mask(data,resplit=False)  # resample negative links
                         edge_mask_train = np.concatenate((data.mask_link_positive_train, data.mask_link_negative_train), axis=-1)
                         nodes_first = torch.index_select(out, 0, torch.from_numpy(edge_mask_train[0,:]).long().to(device))
