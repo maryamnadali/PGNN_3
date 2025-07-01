@@ -314,7 +314,8 @@ class PGNN(torch.nn.Module):
             x = self.linear_pre(x)
         x_position, x = self.conv_first(x, data.dists_max, data.dists_argmax)
         if self.layer_num == 1:
-            return x_position
+            x = F.normalize(x, p=2, dim=-1)   # نرمال‌سازی اختیاری
+            return x                          # ← حالا [N, output_dim]
         if self.dropout:
             x = F.dropout(x, training=self.training)
         for i in range(self.layer_num - 2):
@@ -322,8 +323,8 @@ class PGNN(torch.nn.Module):
             if self.dropout:
                 x = F.dropout(x, training=self.training)
         x_position, x = self.conv_out(x, data.dists_max, data.dists_argmax)
-        x_position = F.normalize(x_position, p=2, dim=-1)
-        return x_position
+        x = F.normalize(x, p=2, dim=-1)   # نرمال‌سازی embedding نهایی
+        return x  
 
 
 
