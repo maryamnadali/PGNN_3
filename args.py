@@ -63,10 +63,6 @@ def make_args():
     parser.add_argument('--anchor_method', dest='anchor_method', default='random', type=str,
                     choices=['random', 'fixed4', 'degree', 'degree_coverage', 'enhanced_degree_coverage', 'degree_farthest', 'betweenness', 'eigenvector'],
                     help='anchor selection method')
-    #anchor use
-    parser.add_argument('--anchor_use_mode', type=str, default='concat',
-                    choices=['concat', 'attention', 'sum', 'mean'],
-                    help='How to use anchor features with node features')
 
     parser.set_defaults(gpu=True, task='link', model='GCN', dataset='All',
                         cache=False, rm_feature=False,
