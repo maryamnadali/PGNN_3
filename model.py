@@ -323,7 +323,7 @@ class PGNN(torch.nn.Module):
                 x = F.dropout(x, training=self.training)
         x_position, x = self.conv_out(x, data.dists_max, data.dists_argmax)
         x_position = F.normalize(x_position, p=2, dim=-1)
-        return x, x_position
+        return x_position
 
 
 
