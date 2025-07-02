@@ -16,6 +16,9 @@ class PGNN_layer(nn.Module):
         self.input_dim = input_dim
         self.dist_trainable = dist_trainable
 
+        # Nonlinear Class is to compute s(u,v) but through neural network (in paper its not leranable)
+        # Nonlinear class is used to compute s(v, u) as a learnable function
+        # whereas in the original PGNN paper, s(v, u) = 1 / (d_sp(v, u) + 1) is fixed and non-learnable.
         if self.dist_trainable:
             self.dist_compute = Nonlinear(1, output_dim, 1)
 
@@ -60,6 +63,9 @@ class PGNN_layer(nn.Module):
 
 
 ### Non linearity
+### Nonlinear Class is to compute s(u,v) but through nn (in paper its not leranable)
+### Nonlinear class is used to compute s(v, u) as a learnable function,
+### whereas in the original PGNN paper, s(v, u) = 1 / (d_sp(v, u) + 1) is fixed and non-learnable.
 class Nonlinear(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(Nonlinear, self).__init__()
