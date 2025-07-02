@@ -22,6 +22,7 @@ class PGNN_layer(nn.Module):
         if self.dist_trainable:
             self.dist_compute = Nonlinear(1, output_dim, 1)
 
+        #from 2d to d (used in forward function)
         self.linear_hidden = nn.Linear(input_dim*2, output_dim)
         self.linear_out_position = nn.Linear(output_dim,1)
         self.act = nn.ReLU()
@@ -46,9 +47,9 @@ class PGNN_layer(nn.Module):
         # print("messages=",messages.size())
 
         self_feature = feature.unsqueeze(1).repeat(1, dists_max.shape[1], 1)
-        messages = torch.cat((messages, self_feature), dim=-1)
+        messages = torch.cat((messages, self_feature), dim=-1) #concate node and anchor
 
-        messages = self.linear_hidden(messages).squeeze()
+        messages = self.linear_hidden(messages).squeeze() #from 2d to d 
         messages = self.act(messages) # n*m*d
         # print("messages=",messages.size())
 
