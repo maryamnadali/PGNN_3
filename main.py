@@ -50,52 +50,47 @@ if __name__ == '__main__':
             #     args.epoch_num = 401
             #     args.cache = True
             results = []
+            
+    # ====== بارگذاری دیتا فقط یکبار برای هر دیتاست ======
+            time1 = time.time()
+            data_list = get_tg_dataset(args, dataset_name, use_cache=args.cache, remove_feature=args.rm_feature)
+            time2 = time.time()
+            print(dataset_name, 'load time',  time2-time1)
+        
+            # ==== تعریف input_dim و output_dim فقط یکبار =====
+            input_dim = data_list[0].x.shape[1]
+            output_dim = args.output_dim
+        
+            num_features = input_dim
+            num_node_classes = None
+            num_graph_classes = None
+            if 'y' in data_list[0].__dict__ and data_list[0].y is not None:
+                num_node_classes = max([data.y.max().item() for data in data_list])+1
+            if 'y_graph' in data_list[0].__dict__ and data_list[0].y_graph is not None:
+                num_graph_classes = max([data.y_graph.numpy()[0] for data in data_list])+1
+            print('Dataset', dataset_name, 'Graph', len(data_list), 'Feature', num_features, 'Node Class', num_node_classes, 'Graph Class', num_graph_classes)
+            nodes = [data.num_nodes for data in data_list]
+            edges = [data.num_edges for data in data_list]
+            print('Node: max{}, min{}, mean{}'.format(max(nodes), min(nodes), sum(nodes)/len(nodes)))
+            print('Edge: max{}, min{}, mean{}'.format(max(edges), min(edges), sum(edges)/len(edges)))
+        
+            args.batch_size = min(args.batch_size, len(data_list))
+            print('Anchor num {}, Batch size {}'.format(args.anchor_num, args.batch_size))
+        
+            for i,data in enumerate(data_list):
+                preselect_anchor(data, layer_num=args.layer_num, anchor_num=args.anchor_num, device='cpu', args=args)
+                data = data.to(device)
+                data_list[i] = data
+        
+            # ====== لیست مدل‌هایی که aggregation می‌گیرن ======
+            models_with_agg = ['PGNN', 'ATTSP']
+        
+            # ====== حلقه تکرار (repeat) ======
             for repeat in range(args.repeat_num):
                 result_val = []
                 result_test = []
-                time1 = time.time()
-                data_list = get_tg_dataset(args, dataset_name, use_cache=args.cache, remove_feature=args.rm_feature)
-                time2 = time.time()
-                print(dataset_name, 'load time',  time2-time1)
-
-                num_features = data_list[0].x.shape[1]
-                num_node_classes = None
-                num_graph_classes = None
-                if 'y' in data_list[0].__dict__ and data_list[0].y is not None:
-                    num_node_classes = max([data.y.max().item() for data in data_list])+1
-                if 'y_graph' in data_list[0].__dict__ and data_list[0].y_graph is not None:
-                    num_graph_classes = max([data.y_graph.numpy()[0] for data in data_list])+1
-                print('Dataset', dataset_name, 'Graph', len(data_list), 'Feature', num_features, 'Node Class', num_node_classes, 'Graph Class', num_graph_classes)
-                nodes = [data.num_nodes for data in data_list]
-                edges = [data.num_edges for data in data_list]
-                print('Node: max{}, min{}, mean{}'.format(max(nodes), min(nodes), sum(nodes)/len(nodes)))
-                print('Edge: max{}, min{}, mean{}'.format(max(edges), min(edges), sum(edges)/len(edges)))
-
-                args.batch_size = min(args.batch_size, len(data_list))
-                print('Anchor num {}, Batch size {}'.format(args.anchor_num, args.batch_size))
-
-                # data
-                for i,data in enumerate(data_list):
-                    # print("i=",i)
-                    # print(data)
-                    preselect_anchor(data, layer_num=args.layer_num, anchor_num=args.anchor_num, device='cpu', args=args)
-                    data = data.to(device)
-                    # print("iiii=",data)
-                    data_list[i] = data
-
-                # model
-                
-                #input_dim = num_features
-                #output_dim = args.output_dim
-                #model = locals()[args.model](input_dim=input_dim, feature_dim=args.feature_dim,
-                 #           hidden_dim=args.hidden_dim, output_dim=output_dim,
-                  #          feature_pre=args.feature_pre, layer_num=args.layer_num, dropout=args.dropout).to(device)
-                #input_dim = num_features
-                #output_dim = args.output_dim
-                
-                # فقط مدل‌هایی که aggregation دارند رو اینجا لیست کن (مثلاً PGNN و ATTSP)
-                models_with_agg = ['PGNN', 'ATTSP']
-                
+        
+                # ==== ساخت مدل ====
                 if args.model in models_with_agg:
                     model = locals()[args.model](
                         input_dim=input_dim,
@@ -116,8 +111,8 @@ if __name__ == '__main__':
                         feature_pre=args.feature_pre,
                         layer_num=args.layer_num,
                         dropout=args.dropout
-                    ).to(device)                
-
+                    ).to(device)
+        
                 
                 # loss
                 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=5e-4)
