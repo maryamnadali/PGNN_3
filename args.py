@@ -4,8 +4,9 @@ def make_args():
     # general
     parser.add_argument('--comment', dest='comment', default='0', type=str,
                         help='comment')
-    parser.add_argument('--task', dest='task', default='link', type=str,
-                        help='link; link_pair')
+    parser.add_argument('--task', dest='task', default='both', type=str,
+                    choices=['link', 'link_pair', 'both'],
+                    help='Task type: link, link_pair, or both')
     parser.add_argument('--model', dest='model', default='GCN', type=str,
                         help='model class name. E.g., GCN, PGNN, ...')
     parser.add_argument('--dataset', dest='dataset', default='All', type=str,
