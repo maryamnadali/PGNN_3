@@ -84,11 +84,41 @@ if __name__ == '__main__':
                     data_list[i] = data
 
                 # model
-                input_dim = num_features
-                output_dim = args.output_dim
-                model = locals()[args.model](input_dim=input_dim, feature_dim=args.feature_dim,
-                            hidden_dim=args.hidden_dim, output_dim=output_dim,
-                            feature_pre=args.feature_pre, layer_num=args.layer_num, dropout=args.dropout).to(device)
+                
+                #input_dim = num_features
+                #output_dim = args.output_dim
+                #model = locals()[args.model](input_dim=input_dim, feature_dim=args.feature_dim,
+                 #           hidden_dim=args.hidden_dim, output_dim=output_dim,
+                  #          feature_pre=args.feature_pre, layer_num=args.layer_num, dropout=args.dropout).to(device)
+                #input_dim = num_features
+                #output_dim = args.output_dim
+                
+                # فقط مدل‌هایی که aggregation دارند رو اینجا لیست کن (مثلاً PGNN و ATTSP)
+                models_with_agg = ['PGNN', 'ATTSP']
+                
+                if args.model in models_with_agg:
+                    model = locals()[args.model](
+                        input_dim=input_dim,
+                        feature_dim=args.feature_dim,
+                        hidden_dim=args.hidden_dim,
+                        output_dim=output_dim,
+                        feature_pre=args.feature_pre,
+                        layer_num=args.layer_num,
+                        dropout=args.dropout,
+                        aggregation=args.aggregation
+                    ).to(device)
+                else:
+                    model = locals()[args.model](
+                        input_dim=input_dim,
+                        feature_dim=args.feature_dim,
+                        hidden_dim=args.hidden_dim,
+                        output_dim=output_dim,
+                        feature_pre=args.feature_pre,
+                        layer_num=args.layer_num,
+                        dropout=args.dropout
+                    ).to(device)                
+
+                
                 # loss
                 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=5e-4)
                 if 'link' in args.task:
