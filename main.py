@@ -32,8 +32,13 @@ if __name__ == '__main__':
     device = torch.device('cuda:'+str(args.cuda) if args.gpu else 'cpu')
 
 
-    for task in ['link', 'link_pair']:
-        args.task = task
+    if args.task == 'both':
+        tasks = ['link', 'link_pair']
+    else:
+        tasks = [args.task]
+
+    for task in tasks:
+        args.task = task  # مقدار آرگومان رو آپدیت کن که همه جا درست کار کنه
         if args.dataset=='All':
             if task == 'link':
                 datasets_name = ['grid','communities','ppi']
@@ -41,8 +46,8 @@ if __name__ == '__main__':
                 datasets_name = ['communities', 'email', 'protein']
         else:
             datasets_name = [args.dataset]
-        #to check task
         print(f"\n🔁 Now running TASK: {task.upper()} on dataset(s): {datasets_name}\n")
+
         for dataset_name in datasets_name:
             # if dataset_name in ['communities','grid']:
             #     args.cache = False
