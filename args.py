@@ -69,7 +69,7 @@ def make_args():
                     choices=['mean', 'sum', 'max'],
                     help='Aggregation method for PGNN: mean, sum, max')
 
-    parser.set_defaults(gpu=True, task='link', model='GCN', dataset='All',
+    parser.set_defaults(gpu=True, task='both', model='GCN', dataset='All',
                         cache=False, rm_feature=False,
                         permute=True, feature_pre=True, dropout=True,
                         approximate=-1, normalize_adj=False)
