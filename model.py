@@ -11,10 +11,11 @@ import pdb
 
 # # PGNN layer, only pick closest node for message passing
 class PGNN_layer(nn.Module):
-    def __init__(self, input_dim, output_dim,dist_trainable=True):
+    def __init__(self, input_dim, output_dim, dist_trainable=True, aggregation='mean'):
         super(PGNN_layer, self).__init__()
         self.input_dim = input_dim
         self.dist_trainable = dist_trainable
+        self.aggregation = aggregation
 
         # Nonlinear Class is to compute s(u,v) but through neural network (in paper its not leranable)
         # Nonlinear class is used to compute s(v, u) as a learnable function
@@ -57,8 +58,15 @@ class PGNN_layer(nn.Module):
         out_position = self.linear_out_position(messages).squeeze(-1)  # n*m_out
 
 
-        out_structure = torch.mean(messages, dim=1)  # n*d
-
+        #out_structure = torch.mean(messages, dim=1)  # n*d
+        if self.aggregation == 'mean':
+            out_structure = torch.mean(messages, dim=1)
+        elif self.aggregation == 'sum':
+            out_structure = torch.sum(messages, dim=1)
+        elif self.aggregation == 'max':
+            out_structure = torch.max(messages, dim=1)[0]
+        else:
+            raise NotImplementedError(f"Unknown aggregation: {self.aggregation}")
 
         return out_position, out_structure
 
@@ -264,21 +272,23 @@ class GIN(torch.nn.Module):
 
 class PGNN(torch.nn.Module):
     def __init__(self, input_dim, feature_dim, hidden_dim, output_dim,
-                 feature_pre=True, layer_num=2, dropout=True, **kwargs):
+                 feature_pre=True, layer_num=2, dropout=True, aggregation='mean', **kwargs):
         super(PGNN, self).__init__()
         self.feature_pre = feature_pre
         self.layer_num = layer_num
         self.dropout = dropout
+        self.aggregation = aggregation
+                     
         if layer_num == 1:
             hidden_dim = output_dim
         if feature_pre:
             self.linear_pre = nn.Linear(input_dim, feature_dim)
-            self.conv_first = PGNN_layer(feature_dim, hidden_dim)
+            self.conv_first = PGNN_layer(feature_dim, hidden_dim, aggregation=self.aggregation)
         else:
-            self.conv_first = PGNN_layer(input_dim, hidden_dim)
+            self.conv_first = PGNN_layer(input_dim, hidden_dim, aggregation=self.aggregation)
         if layer_num>1:
-            self.conv_hidden = nn.ModuleList([PGNN_layer(hidden_dim, hidden_dim) for i in range(layer_num - 2)])
-            self.conv_out = PGNN_layer(hidden_dim, output_dim)
+            self.conv_hidden = nn.ModuleList([PGNN_layer(hidden_dim, hidden_dim, aggregation=self.aggregation) for i in range(layer_num - 2)])
+            self.conv_out = PGNN_layer(hidden_dim, output_dim, aggregation=self.aggregation)
 
     def forward(self, data):
         x = data.x
