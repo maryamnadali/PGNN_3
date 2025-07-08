@@ -65,6 +65,8 @@ class PGNN_layer(nn.Module):
             out_structure = torch.sum(messages, dim=1)
         elif self.aggregation == 'max':
             out_structure = torch.max(messages, dim=1)[0]
+        elif self.aggregation == 'min':
+            out_structure = torch.min(messages, dim=1)[0]    
         else:
             raise NotImplementedError(f"Unknown aggregation: {self.aggregation}")
 
