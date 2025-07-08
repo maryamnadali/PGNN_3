@@ -63,8 +63,8 @@ def make_args():
                     help='anchor selection method')
     #agg_s in paper
     parser.add_argument('--aggregation', dest='aggregation', default='mean', type=str,
-                    choices=['mean', 'sum', 'max'],
-                    help='Aggregation method for PGNN: mean, sum, max')
+                    choices=['mean', 'sum', 'max', 'min'],
+                    help='Aggregation method for PGNN: mean, sum, max, min')
 
     parser.set_defaults(gpu=True, task='both', model='GCN', dataset='All',
                         cache=False, rm_feature=False,
