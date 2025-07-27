@@ -222,14 +222,6 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
         method = 'random'
     else:
         method = args.anchor_method
-
-    if method == 'fixed4':
-        # ساخت anchor بر اساس سایزهای 1, 3, 7, 15 (مثل قبل)
-        for i in range(anchor_size_num):
-            anchor_size = 2**(i+1) - 1
-            anchors = np.random.choice(data.num_nodes, size=(layer_num, anchor_num_per_size, anchor_size), replace=True)
-            data.anchor_set.append(anchors)
-        return
     
     elif method == 'random':
         # روش فعلی، یعنی استفاده از get_random_anchorset
