@@ -28,6 +28,13 @@ class PGNN_layer(nn.Module):
         self.linear_out_position = nn.Linear(output_dim,1)
         self.act = nn.ReLU()
 
+        if self.aggregation == 'mlp':
+          self.mlp_after_pool = nn.Sequential(
+            nn.Linear(output_dim, output_dim),
+            nn.ReLU(),
+            nn.Linear(output_dim, output_dim),
+          )
+
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 m.weight.data = init.xavier_uniform_(m.weight.data, gain=nn.init.calculate_gain('relu'))
@@ -67,6 +74,9 @@ class PGNN_layer(nn.Module):
             out_structure = torch.max(messages, dim=1)[0]
         elif self.aggregation == 'min':
             out_structure = torch.min(messages, dim=1)[0]    
+        elif self.aggregation == 'mlp':
+          pooled = torch.mean(messages, dim=1)      # می‌تونی sum رو هم تست کنی
+          out_structure = self.mlp_after_pool(pooled) 
         else:
             raise NotImplementedError(f"Unknown aggregation: {self.aggregation}")
 
