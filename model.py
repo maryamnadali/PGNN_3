@@ -16,7 +16,7 @@ class PGNN_layer(nn.Module):
         self.input_dim = input_dim
         self.dist_trainable = dist_trainable
         self.aggregation = aggregation
-        self.comb_mode = comb_mode
+        self.comb_mode = comb_mode.lower()
 
         # Nonlinear Class is to compute s(u,v) but through neural network (in paper its not leranable)
         # Nonlinear class is used to compute s(v, u) as a learnable function
@@ -65,7 +65,7 @@ class PGNN_layer(nn.Module):
             messages = self.linear_hidden(messages).squeeze()             # 2d → d → [n, m, d]
             messages = self.act(messages)                                 # [n, m, d]
 
-        elif self.comb_mode == 'concat':  # comb_mode == 'xattn'
+        elif self.comb_mode == 'xattn':  # comb_mode == 'xattn'
             # 1) گیت فاصله (مثل concat)
             gated = subset_features * dists_max.unsqueeze(-1)             # [n, m, input_dim]
 
@@ -90,6 +90,9 @@ class PGNN_layer(nn.Module):
             Mh = Vh * attn                                         # [n, m, h, dh]
             messages = Mh.reshape(n, m, d)                         # [n, m, d]
             messages = self.act(messages)
+
+        else:
+            raise NotImplementedError(f"Unknown comb_mode: {self.comb_mode}")
 
         # print("subset_features=",len(subset_features))
         # print("dists_max=",dists_max.size())
