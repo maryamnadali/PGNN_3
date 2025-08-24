@@ -11,11 +11,12 @@ import pdb
 
 # # PGNN layer, only pick closest node for message passing
 class PGNN_layer(nn.Module):
-    def __init__(self, input_dim, output_dim, dist_trainable=True, aggregation='mean'):
+    def __init__(self, input_dim, output_dim, dist_trainable=True, aggregation='mean', comb_mode='concat', num_heads=4):
         super(PGNN_layer, self).__init__()
         self.input_dim = input_dim
         self.dist_trainable = dist_trainable
         self.aggregation = aggregation
+        self.comb_mode = comb_mode
 
         # Nonlinear Class is to compute s(u,v) but through neural network (in paper its not leranable)
         # Nonlinear class is used to compute s(v, u) as a learnable function
@@ -35,6 +36,14 @@ class PGNN_layer(nn.Module):
             nn.Linear(output_dim, output_dim),
           )
 
+        self.num_heads = num_heads
+        if self.comb_mode == 'xattn':
+            assert output_dim % self.num_heads == 0, "output_dim must be divisible by num_heads"
+            self.head_dim = output_dim // self.num_heads
+            self.Wq = nn.Linear(input_dim, output_dim, bias=False)
+            self.Wk = nn.Linear(input_dim, output_dim, bias=False)
+            self.Wv = nn.Linear(input_dim, output_dim, bias=False)
+        
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 m.weight.data = init.xavier_uniform_(m.weight.data, gain=nn.init.calculate_gain('relu'))
@@ -46,19 +55,45 @@ class PGNN_layer(nn.Module):
             dists_max = self.dist_compute(dists_max.unsqueeze(-1)).squeeze()
 
         subset_features = feature[dists_argmax.flatten(), :]
-        subset_features = subset_features.reshape((dists_argmax.shape[0], dists_argmax.shape[1],
-                                                   feature.shape[1]))
-        messages = subset_features * dists_max.unsqueeze(-1)
+        subset_features = subset_features.reshape((dists_argmax.shape[0], dists_argmax.shape[1], feature.shape[1]))
+        
+        if self.comb_mode == 'concat':
+            # ----- مسیر فعلی (بدون تغییر) -----
+            messages = subset_features * dists_max.unsqueeze(-1)          # [n, m, input_dim]
+            self_feature = feature.unsqueeze(1).repeat(1, dists_max.shape[1], 1)  # [n, m, input_dim]
+            messages = torch.cat((messages, self_feature), dim=-1)        # **concat** → [n, m, 2*input_dim]
+            messages = self.linear_hidden(messages).squeeze()             # 2d → d → [n, m, d]
+            messages = self.act(messages)                                 # [n, m, d]
+
+        elif self.comb_mode == 'concat':  # comb_mode == 'xattn'
+            # 1) گیت فاصله (مثل concat)
+            gated = subset_features * dists_max.unsqueeze(-1)             # [n, m, input_dim]
+
+            # 2) Q/K/V مشترک
+            Q = self.Wq(feature)                # [n, d]
+            K = self.Wk(gated)                  # [n, m, d]
+            V = self.Wv(gated)                  # [n, m, d]
+
+            # 3) چندسَری (فعلاً 4؛ آماده برای 1 یا 8)
+            n, m, d = K.shape
+            h = self.num_heads
+            dh = d // h
+
+            Qh = Q.view(n, h, dh)                             # [n, h, dh]
+            Kh = K.view(n, m, h, dh)                          # [n, m, h, dh]
+            Vh = V.view(n, m, h, dh)                          # [n, m, h, dh]
+
+            # 4) امتیاز per‑anchor و گیت سیگموید (حفظ شکل n×m×d)
+            score = (Kh * Qh.unsqueeze(1)).sum(-1) / (dh ** 0.5)   # [n, m, h]
+            attn = torch.sigmoid(score).unsqueeze(-1)              # [n, m, h, 1]
+
+            Mh = Vh * attn                                         # [n, m, h, dh]
+            messages = Mh.reshape(n, m, d)                         # [n, m, d]
+            messages = self.act(messages)
 
         # print("subset_features=",len(subset_features))
         # print("dists_max=",dists_max.size())
         # print("messages=",messages.size())
-
-        self_feature = feature.unsqueeze(1).repeat(1, dists_max.shape[1], 1)
-        messages = torch.cat((messages, self_feature), dim=-1) #concate node and anchor
-
-        messages = self.linear_hidden(messages).squeeze() #from 2d to d 
-        messages = self.act(messages) # n*m*d
         # print("messages=",messages.size())
 
         # out_position=messages.mean(dim=1)# do this only for ppi,cora,email
@@ -284,23 +319,24 @@ class GIN(torch.nn.Module):
 
 class PGNN(torch.nn.Module):
     def __init__(self, input_dim, feature_dim, hidden_dim, output_dim,
-                 feature_pre=True, layer_num=2, dropout=True, aggregation='mean', **kwargs):
+                 feature_pre=True, layer_num=2, dropout=True, aggregation='mean', comb_mode='concat', **kwargs):
         super(PGNN, self).__init__()
         self.feature_pre = feature_pre
         self.layer_num = layer_num
         self.dropout = dropout
         self.aggregation = aggregation
+        self.comb_mode = comb_mode
                      
         if layer_num == 1:
             hidden_dim = output_dim
         if feature_pre:
             self.linear_pre = nn.Linear(input_dim, feature_dim)
-            self.conv_first = PGNN_layer(feature_dim, hidden_dim, aggregation=self.aggregation)
+            self.conv_first = PGNN_layer(feature_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode)
         else:
-            self.conv_first = PGNN_layer(input_dim, hidden_dim, aggregation=self.aggregation)
+            self.conv_first = PGNN_layer(input_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode)
         if layer_num>1:
-            self.conv_hidden = nn.ModuleList([PGNN_layer(hidden_dim, hidden_dim, aggregation=self.aggregation) for i in range(layer_num - 2)])
-            self.conv_out = PGNN_layer(hidden_dim, output_dim, aggregation=self.aggregation)
+            self.conv_hidden = nn.ModuleList([PGNN_layer(hidden_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode) for i in range(layer_num - 2)])
+            self.conv_out = PGNN_layer(hidden_dim, output_dim, aggregation=self.aggregation, comb_mode=self.comb_mode)
 
     def forward(self, data):
         x = data.x
@@ -381,7 +417,7 @@ class ATTSP(nn.Module):
         #--------------------------------------------------
         #--------------------PGNN-------------------------
         self.pgnn=PGNN(input_dim=input_dim, feature_dim=feature_dim,
-                            hidden_dim=hidden_dim, output_dim=output_dim,)
+                            hidden_dim=hidden_dim, output_dim=output_dim, comb_mode=kwargs.get('comb_mode', 'concat'))
         # if layer_num == 1:
         #     hidden_dim = output_dim
         # if feature_pre:
