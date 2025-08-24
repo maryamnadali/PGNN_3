@@ -67,9 +67,9 @@ def make_args():
                     help='Aggregation method for PGNN: mean, sum, max, min, mlp')
 
     #combination method to combine anchor and nodes
-    parser.add_argument('--comb_mode', dest='comb_mode', default='connect', type=str,
+    parser.add_argument('--comb_mode', dest='comb_mode', default='concat', type=str,
                     choices=['connect', 'xattn'],
-                    help='PGNN message combination: connect (current behavior) or xattn (cross-attention)')
+                    help='PGNN message combination: concat (concatination) or xattn (cross-attention)')
     
     
     parser.set_defaults(gpu=True, task='both', model='GCN', dataset='All',
