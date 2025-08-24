@@ -65,10 +65,6 @@ def make_args():
     parser.add_argument('--aggregation', dest='aggregation', default='mean', type=str,
                     choices=['mean', 'sum', 'max', 'min', 'mlp'],
                     help='Aggregation method for PGNN: mean, sum, max, min, mlp')
-
-    parser.add_argument('--pgnn_msg', dest='pgnn_msg', default='concat',
-                    choices=['concat', 'xattn'],
-                    help='Choose message mode inside PGNN: concat (current) or xattn (cross-attention).')
     
     parser.set_defaults(gpu=True, task='both', model='GCN', dataset='All',
                         cache=False, rm_feature=False,
