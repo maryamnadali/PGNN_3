@@ -65,6 +65,12 @@ def make_args():
     parser.add_argument('--aggregation', dest='aggregation', default='mean', type=str,
                     choices=['mean', 'sum', 'max', 'min', 'mlp'],
                     help='Aggregation method for PGNN: mean, sum, max, min, mlp')
+
+    #combination method to combine anchor and nodes
+    parser.add_argument('--comb_mode', dest='comb_mode', default='connect', type=str,
+                    choices=['connect', 'xattn'],
+                    help='PGNN message combination: connect (current behavior) or xattn (cross-attention)')
+    
     
     parser.set_defaults(gpu=True, task='both', model='GCN', dataset='All',
                         cache=False, rm_feature=False,
