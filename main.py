@@ -105,7 +105,8 @@ if __name__ == '__main__':
                         feature_pre=args.feature_pre,
                         layer_num=args.layer_num,
                         dropout=args.dropout,
-                        aggregation=args.aggregation
+                        aggregation=args.aggregation,
+                        comb_mode=args.comb_mode,
                     ).to(device)
                 else:
                     model = locals()[args.model](
@@ -115,7 +116,8 @@ if __name__ == '__main__':
                         output_dim=output_dim,
                         feature_pre=args.feature_pre,
                         layer_num=args.layer_num,
-                        dropout=args.dropout
+                        dropout=args.dropout,
+                        comb_mode=args.comb_mode,
                     ).to(device)
         
                 
