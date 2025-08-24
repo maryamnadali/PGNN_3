@@ -68,7 +68,7 @@ def make_args():
 
     #combination method to combine anchor and nodes
     parser.add_argument('--comb_mode', dest='comb_mode', default='concat', type=str,
-                    choices=['connect', 'xattn'],
+                    choices=['concat', 'xattn'],
                     help='PGNN message combination: concat (concatination) or xattn (cross-attention)')
     
     
