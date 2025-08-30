@@ -72,7 +72,7 @@ def make_args():
                     help='PGNN message combination: concat (concatination) or xattn (cross-attention)')
 
     #neighbors in loss function
-    parser.add_argument('--lambda_ns', dest='lambda_ns', default=0.1, type=float,
+    parser.add_argument('--lambda_ns', dest='lambda_ns', default=0.0, type=float,
                     help='weight for neighbor-similarity regularizer')
     parser.add_argument('--ns_mode', dest='ns_mode', default='cos', type=str,
                     choices=['cos'], help='neighbor similarity mode')
