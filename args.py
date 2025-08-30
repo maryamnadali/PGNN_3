@@ -72,6 +72,7 @@ def make_args():
                     help='PGNN message combination: concat (concatination) or xattn (cross-attention)')
 
     #neighbors in loss function
+    #python main.py --task link_pair --model PGNN_fast --dataset email --lambda_ns 0.1
     parser.add_argument('--lambda_ns', dest='lambda_ns', default=0.0, type=float,
                     help='weight for neighbor-similarity regularizer')
     parser.add_argument('--ns_mode', dest='ns_mode', default='cos', type=str,
