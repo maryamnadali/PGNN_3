@@ -43,6 +43,10 @@ def pretrain(args, data_list, model, optimizer, writer_train, writer_val, writer
             label_negative = torch.zeros([mask_link_negative.shape[1], ], dtype=pred.dtype)
             label = torch.cat((label_positive, label_negative)).to(device)
             loss = loss_func(pred, label)
+            if getattr(args, 'lambda_ns', 0.0) > 0:
+              loss_ns = neighbor_sim_loss(out, data.mask_link_positive_train, device, mode=args.ns_mode)
+              loss = loss + args.lambda_ns * loss_ns
+
 
             # update
             loss.backward()
