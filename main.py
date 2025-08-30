@@ -151,6 +151,11 @@ if __name__ == '__main__':
                         label_negative = torch.zeros([data.mask_link_negative_train.shape[1],], dtype=pred.dtype)
                         label = torch.cat((label_positive,label_negative)).to(device)
                         loss = loss_func(pred, label)
+                        # === Neighbor-sim (cos) روی یال‌های TRAIN مثبت ===
+                        if getattr(args, 'lambda_ns', 0.0) > 0:
+                            loss_ns = neighbor_sim_loss(out, data.mask_link_positive_train, device, mode=args.ns_mode)
+                            loss = loss + args.lambda_ns * loss_ns
+
 
                         # update
                         loss.backward()
