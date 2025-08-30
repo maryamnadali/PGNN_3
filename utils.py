@@ -3,6 +3,8 @@ import networkx as nx
 import numpy as np
 import multiprocessing as mp
 import random
+import torch.nn.functional as F
+
 
 
 
@@ -34,6 +36,18 @@ def get_edge_mask_link_negative(mask_link_positive, num_nodes, num_negtive_edges
                 break
 
     return mask_link_negative
+
+def neighbor_sim_loss(emb, edge_index_np, device, mode='cos'):
+    # emb: Tensor [N, D]
+    # edge_index_np: np.ndarray [2, E] (یال‌های TRAIN)
+    src = torch.from_numpy(edge_index_np[0, :]).long().to(device)
+    dst = torch.from_numpy(edge_index_np[1, :]).long().to(device)
+    h_src = emb[src]
+    h_dst = emb[dst]
+    # چون فقط cos می‌خوایم:
+    cos = F.cosine_similarity(h_src, h_dst, dim=-1)  # ∈ [-1,1]
+    return (1.0 - cos).mean()  # میانگین (1 - cos)
+
 
 def resample_edge_mask_link_negative(data):
     data.mask_link_negative_train = get_edge_mask_link_negative(data.mask_link_positive_train, num_nodes=data.num_nodes,
