@@ -118,6 +118,8 @@ if __name__ == '__main__':
                         layer_num=args.layer_num,
                         dropout=args.dropout,
                         comb_mode=args.comb_mode,
+                        prob_factor=getattr(args, 'prob_factor', 5),
+                        prob_min_top=getattr(args, 'prob_min_top', 1),
                     ).to(device)
         
                 
