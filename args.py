@@ -68,8 +68,12 @@ def make_args():
 
     #combination method to combine anchor and nodes
     parser.add_argument('--comb_mode', dest='comb_mode', default='concat', type=str,
-                    choices=['concat', 'xattn'],
-                    help='PGNN message combination: concat (concatination) or xattn (cross-attention)')
+                    choices=['concat', 'xattn', 'probxattn'],
+                    help='PGNN message combination: concat (concatination) or xattn (cross-attention) or probxattn (ProbSparse over nodes)')
+    parser.add_argument('--prob_factor', dest='prob_factor', default=5, type=int,
+                    help='c in c*ln(N) and c*ln(M) sampling for ProbSparse')
+    parser.add_argument('--prob_min_top', dest='prob_min_top', default=1, type=int,
+                    help='minimum selected queries (nodes) and sampled anchors per node')
 
     #neighbors in loss function
     # !python main.py --model PGNN --layer_num 2 --dataset communities --lambda_ns 0.1
