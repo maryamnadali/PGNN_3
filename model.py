@@ -11,12 +11,14 @@ import pdb
 
 # # PGNN layer, only pick closest node for message passing
 class PGNN_layer(nn.Module):
-    def __init__(self, input_dim, output_dim, dist_trainable=True, aggregation='mean', comb_mode='concat', num_heads=4):
+    def __init__(self, input_dim, output_dim, dist_trainable=True, aggregation='mean', comb_mode='concat', num_heads=4, prob_factor=5, prob_min_top=1):
         super(PGNN_layer, self).__init__()
         self.input_dim = input_dim
         self.dist_trainable = dist_trainable
         self.aggregation = aggregation
         self.comb_mode = comb_mode.lower()
+        self.prob_factor = prob_factor
+        self.prob_min_top = prob_min_top
 
         # Nonlinear Class is to compute s(u,v) but through neural network (in paper its not leranable)
         # Nonlinear class is used to compute s(v, u) as a learnable function
@@ -35,14 +37,18 @@ class PGNN_layer(nn.Module):
             nn.ReLU(),
             nn.Linear(output_dim, output_dim),
           )
-
+        d_in = input_dim
+        d_out = output_dim
+        
         self.num_heads = num_heads
-        if self.comb_mode == 'xattn':
+        if self.comb_mode in ['xattn', 'probxattn']:
             assert output_dim % self.num_heads == 0, "output_dim must be divisible by num_heads"
             self.head_dim = output_dim // self.num_heads
             self.Wq = nn.Linear(input_dim, output_dim, bias=False)
             self.Wk = nn.Linear(input_dim, output_dim, bias=False)
             self.Wv = nn.Linear(input_dim, output_dim, bias=False)
+            self.linear_hidden = nn.Linear(2 * input_dim, output_dim)
+            self.act = nn.ReLU()
         
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -90,6 +96,59 @@ class PGNN_layer(nn.Module):
             Mh = Vh * attn                                         # [n, m, h, dh]
             messages = Mh.reshape(n, m, d)                         # [n, m, d]
             messages = self.act(messages)
+
+        elif self.comb_mode == 'probxattn':
+          # ----- 1) گیت فاصله و تشکیل subset انکرها برای هر نود -----
+          gated = subset_features * dists_max.unsqueeze(-1)   # [N, M, input_dim]
+
+          # ----- 2) Q, K, V مشترک (مثل xattn) -----
+          Q = self.Wq(feature)          # [N, D]
+          K = self.Wk(gated)            # [N, M, D]
+          V = self.Wv(gated)            # [N, M, D]
+          N, M, D = K.shape
+          dev = K.device
+
+          # ----- 3) Context اولیه: concat + Linear(2d->d) (همان مسیر concat تو) -----
+          context_init = torch.cat(
+              (gated, feature.unsqueeze(1).expand(-1, M, -1)), dim=-1
+          )                                               # [N, M, 2*input_dim]
+          context_init = self.linear_hidden(context_init)  # [N, M, D]
+          context_init = self.act(context_init)           # [N, M, D]
+
+          messages = context_init.clone()  # [N, M, D]  ← پایه برای همه نودها
+
+          # ----- 4) انتخاب نودهای فعال با ProbSparse (کاهش روی Query) -----
+          # نمونه‌گیری انکرها برای تقریب پراکندگی هر نود
+          import math
+          factor = max(int(self.prob_factor), 1)
+          sample_k = min(M, max(int(factor * math.ceil(math.log(max(M, 2)))), self.prob_min_top))  # c*ln(M)
+          top_q   = min(N, max(int(factor * math.ceil(math.log(max(N, 2)))), self.prob_min_top))   # c*ln(N)
+
+          idx_sample = torch.randint(M, (N, sample_k), device=dev)           # [N, sample_k]
+          batch_idx  = torch.arange(N, device=dev).unsqueeze(1).expand(-1, sample_k)
+          # نمره‌ی تقریبی برای هر نود با زیرمجموعه‌ی کوچک انکرها
+          Q_exp = Q.unsqueeze(1).expand(-1, sample_k, -1)                     # [N, sample_k, D]
+          K_smp = K[batch_idx, idx_sample, :]                                  # [N, sample_k, D]
+          score_smp = (Q_exp * K_smp).sum(-1) / (D ** 0.5)                     # [N, sample_k]
+          # معیار پراکندگی برای هر نود (max - mean)
+          M_measure = score_smp.max(dim=1).values - score_smp.mean(dim=1)      # [N]
+          # انتخاب نودهای فعال
+          top_idx_nodes = torch.topk(M_measure, k=top_q, sorted=False).indices # [top_q]
+
+          # ----- 5) محاسبه‌ی attention دقیق فقط برای نودهای منتخب -----
+          Q_sel = Q[top_idx_nodes]           # [top_q, D]
+          K_sel = K[top_idx_nodes]           # [top_q, M, D]
+          V_sel = V[top_idx_nodes]           # [top_q, M, D]
+
+          # توجه: در xattn تو از sigmoid برای هر انکر استفاده کرده‌ای (نه softmax روی M).
+          # برای سازگاری، همین را نگه می‌داریم تا ابعاد و رفتار یکسان بماند.
+          scores = (Q_sel.unsqueeze(1) * K_sel).sum(-1) / (D ** 0.5)   # [top_q, M]
+          attn   = torch.sigmoid(scores)                               # [top_q, M]
+          msg_sel = V_sel * attn.unsqueeze(-1)                         # [top_q, M, D]
+
+          # ----- 6) جایگزینی پیام‌ها فقط برای نودهای منتخب -----
+          messages[top_idx_nodes] = self.act(msg_sel)                  # [N, M, D]
+
 
         else:
             raise NotImplementedError(f"Unknown comb_mode: {self.comb_mode}")
@@ -322,7 +381,7 @@ class GIN(torch.nn.Module):
 
 class PGNN(torch.nn.Module):
     def __init__(self, input_dim, feature_dim, hidden_dim, output_dim,
-                 feature_pre=True, layer_num=2, dropout=True, aggregation='mean', comb_mode='concat', **kwargs):
+                 feature_pre=True, layer_num=2, dropout=True, aggregation='mean', comb_mode='concat', prob_factor=5, prob_min_top=1, **kwargs):
         super(PGNN, self).__init__()
         self.feature_pre = feature_pre
         self.layer_num = layer_num
@@ -334,12 +393,16 @@ class PGNN(torch.nn.Module):
             hidden_dim = output_dim
         if feature_pre:
             self.linear_pre = nn.Linear(input_dim, feature_dim)
-            self.conv_first = PGNN_layer(feature_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode)
+            self.conv_first = PGNN_layer(feature_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, prob_factor=prob_factor,
+                                         prob_min_top=prob_min_top)
         else:
-            self.conv_first = PGNN_layer(input_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode)
+            self.conv_first = PGNN_layer(input_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, prob_factor=prob_factor,
+                                         prob_min_top=prob_min_top)
         if layer_num>1:
-            self.conv_hidden = nn.ModuleList([PGNN_layer(hidden_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode) for i in range(layer_num - 2)])
-            self.conv_out = PGNN_layer(hidden_dim, output_dim, aggregation=self.aggregation, comb_mode=self.comb_mode)
+            self.conv_hidden = nn.ModuleList([PGNN_layer(hidden_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, prob_factor=prob_factor,
+                                         prob_min_top=prob_min_top) for i in range(layer_num - 2)])
+            self.conv_out = PGNN_layer(hidden_dim, output_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, prob_factor=prob_factor,
+                                         prob_min_top=prob_min_top)
 
     def forward(self, data):
         x = data.x
