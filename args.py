@@ -74,6 +74,7 @@ def make_args():
                     help='c in c*ln(N) and c*ln(M) sampling for ProbSparse')
     parser.add_argument('--prob_min_top', dest='prob_min_top', default=1, type=int,
                     help='minimum selected queries (nodes) and sampled anchors per node')
+    #!python main.py --model PGNN --dataset communities --comb_mode probxattn --prob_context_mode mean
     parser.add_argument('--prob_context_mode', dest='prob_context_mode', default='concat', type=str, choices=['concat', 'mean'],
                     help='How to form initial context in ProbSparse: concat (default) or mean (Informer-style)')
 
