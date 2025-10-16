@@ -393,21 +393,22 @@ class PGNN(torch.nn.Module):
         self.dropout = dropout
         self.aggregation = aggregation
         self.comb_mode = comb_mode
+        self.prob_context_mode = kwargs.get('prob_context_mode', 'concat')
                      
         if layer_num == 1:
             hidden_dim = output_dim
         if feature_pre:
             self.linear_pre = nn.Linear(input_dim, feature_dim)
             self.conv_first = PGNN_layer(feature_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, prob_factor=prob_factor,
-                                         prob_min_top=prob_min_top)
+                                         prob_min_top=prob_min_top, prob_context_mode=self.prob_context_mode,)
         else:
             self.conv_first = PGNN_layer(input_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, prob_factor=prob_factor,
-                                         prob_min_top=prob_min_top)
+                                         prob_min_top=prob_min_top, prob_context_mode=self.prob_context_mode,)
         if layer_num>1:
             self.conv_hidden = nn.ModuleList([PGNN_layer(hidden_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, prob_factor=prob_factor,
-                                         prob_min_top=prob_min_top) for i in range(layer_num - 2)])
+                                         prob_min_top=prob_min_top, prob_context_mode=self.prob_context_mode,) for i in range(layer_num - 2)])
             self.conv_out = PGNN_layer(hidden_dim, output_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, prob_factor=prob_factor,
-                                         prob_min_top=prob_min_top)
+                                         prob_min_top=prob_min_top, prob_context_mode=self.prob_context_mode,)
 
     def forward(self, data):
         x = data.x
