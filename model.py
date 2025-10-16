@@ -6,6 +6,7 @@ from torch_geometric.nn import MessagePassing
 from torch_geometric.utils import add_self_loops, degree
 from torch.nn import init
 import pdb
+import math
 
 ####################### Basic Ops #############################
 
@@ -124,7 +125,6 @@ class PGNN_layer(nn.Module):
 
           # ----- 4) انتخاب نودهای فعال با ProbSparse (کاهش روی Query) -----
           # نمونه‌گیری انکرها برای تقریب پراکندگی هر نود
-          import math
           factor = max(int(self.prob_factor), 1)
           sample_k = min(M, max(int(factor * math.ceil(math.log(max(M, 2)))), self.prob_min_top))  # c*ln(M)
           top_q   = min(N, max(int(factor * math.ceil(math.log(max(N, 2)))), self.prob_min_top))   # c*ln(N)
