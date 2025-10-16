@@ -107,6 +107,9 @@ if __name__ == '__main__':
                         dropout=args.dropout,
                         aggregation=args.aggregation,
                         comb_mode=args.comb_mode,
+                        prob_factor=getattr(args, 'prob_factor', 5),
+                        prob_min_top=getattr(args, 'prob_min_top', 1),
+                        prob_context_mode=getattr(args, 'prob_context_mode', 'concat'),
                     ).to(device)
                 else:
                     model = locals()[args.model](
@@ -120,6 +123,7 @@ if __name__ == '__main__':
                         comb_mode=args.comb_mode,
                         prob_factor=getattr(args, 'prob_factor', 5),
                         prob_min_top=getattr(args, 'prob_min_top', 1),
+                        prob_context_mode=getattr(args, 'prob_context_mode', 'concat'),
                     ).to(device)
         
                 
