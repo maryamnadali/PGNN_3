@@ -111,16 +111,16 @@ class PGNN_layer(nn.Module):
 
           
           # ----- 3) Context اولیه (قابل انتخاب: concat یا mean) -----
-        if getattr(self, "prob_context_mode", "concat") == "mean":
-            # === روش Informer: میانگین تمام Vها برای هر نود ===
-            context_init = V.mean(dim=1, keepdim=True).repeat(1, M, 1)  # [N, M, D]
-        else:
-            # === روش concat: ترکیب (node + anchor) با فشرده‌سازی 2d→d ===
-            context_init = torch.cat((gated, feature.unsqueeze(1).expand(-1, M, -1)), dim=-1)    # [N, M, 2*input_dim]
-            context_init = self.linear_hidden(context_init)  # [N, M, D]
-            context_init = self.act(context_init)           # [N, M, D]
+            if getattr(self, "prob_context_mode", "concat") == "mean":
+                # === روش Informer: میانگین تمام Vها برای هر نود ===
+                context_init = V.mean(dim=1, keepdim=True).repeat(1, M, 1)  # [N, M, D]
+            else:
+                # === روش concat: ترکیب (node + anchor) با فشرده‌سازی 2d→d ===
+                context_init = torch.cat((gated, feature.unsqueeze(1).expand(-1, M, -1)), dim=-1)    # [N, M, 2*input_dim]
+                context_init = self.linear_hidden(context_init)  # [N, M, D]
+                context_init = self.act(context_init)           # [N, M, D]
 
-        messages = context_init.clone()  # [N, M, D]
+            messages = context_init.clone()  # [N, M, D]
 
 
           # ----- 4) انتخاب نودهای فعال با ProbSparse (کاهش روی Query) -----
