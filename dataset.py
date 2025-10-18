@@ -52,6 +52,11 @@ def get_tg_dataset(args, dataset_name, use_cache=True, remove_feature=False):
                 edge_labels = [label]
 
                 data_list = nx_to_tg_data(graphs, features, edge_labels)
+
+                for d in data_list:
+                  get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True, infer_link_positive=False)
+                  dist = precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
+                  d.dists = torch.from_numpy(dist).float()
             return data_list
     # ---------------------------------------------------------------------------
 
