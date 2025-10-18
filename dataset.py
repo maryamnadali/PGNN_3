@@ -31,6 +31,30 @@ def get_tg_dataset(args, dataset_name, use_cache=True, remove_feature=False):
     # "Cora", "CiteSeer" and "PubMed"
     if dataset_name in ['Cora', 'CiteSeer', 'PubMed']:
         dataset = tg.datasets.Planetoid(root='datasets/' + dataset_name, name=dataset_name)
+        # ------------------ اضافه‌شده برای Link-Pair روی Planetoid ------------------
+        if args.task == 'link_pair':
+            data_list = []
+            for data in dataset:
+                n = data.num_nodes
+                y = data.y.numpy()
+                label = np.zeros((n, n), dtype=int)
+
+                # ساخت ماتریس برچسب جفت‌نود: 1 اگر هم‌کلاس باشند
+                for i in range(n):
+                    for j in range(i):
+                        if y[i] == y[j]:
+                            label[i, j] = 1
+
+            # تبدیل گراف torch_geometric به networkx
+                G = tg.utils.to_networkx(data)
+                graphs = [G]
+                features = [data.x.numpy()]
+                edge_labels = [label]
+
+                data_list = nx_to_tg_data(graphs, features, edge_labels)
+            return data_list
+    # ---------------------------------------------------------------------------
+
     elif dataset_name in ['Amazon']:
         dataset = tg.datasets.Amazon(root='path/to/dataset', name='Photo')
     else:
