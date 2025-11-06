@@ -460,6 +460,54 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
                 marked.update(nxt)
                 frontier = nxt
 
+    elif method == 'hyper':
+        import math, torch
+        # -------------------------------
+        # 1️⃣ تعداد انکرها
+        # -------------------------------
+        m = int(math.log2(data.num_nodes))
+        anchor_num = m  # مثل مقاله: Q < log2(N)
+
+        # -------------------------------
+        # 2️⃣ انتخاب Anchor Nodes (A_V)
+        # -------------------------------
+        anchor_nodes = np.random.choice(data.num_nodes, size=anchor_num, replace=False)
+        anchor_nodes = [[int(a)] for a in anchor_nodes]  # قالب [[a1], [a2], ...]
+
+        # -------------------------------
+        # 3️⃣ ساخت هایپرج‌ها (از featureها)
+        # هر ستون ویژگی در ماتریس X یک "هایپرج" فرض می‌شود
+        # یعنی مجموعه نودهایی که مقدار feature بالاتر از ۰ دارند.
+        # -------------------------------
+        X = data.x.cpu().numpy()
+        num_features = X.shape[1]
+        hyperedges = []
+        for j in range(num_features):
+            nodes_with_feat = np.where(X[:, j] > 0)[0]
+            if len(nodes_with_feat) > 0:
+                hyperedges.append(nodes_with_feat)
+
+        # -------------------------------
+        # 4️⃣ انتخاب Anchor Hyperedges (A_E)
+        # -------------------------------
+        num_hyper = len(hyperedges)
+        anchor_num_hyper = min(anchor_num, num_hyper)
+        anchor_hyper = np.random.choice(num_hyper, size=anchor_num_hyper, replace=False)
+        # نودهای داخل هر هایپرج به‌عنوان مرجع فاصله در نظر گرفته می‌شوند
+        anchor_hyper_nodes = [hyperedges[i].tolist() for i in anchor_hyper]
+
+        # -------------------------------
+        # 5️⃣ ادغام Anchor Nodes و Anchor Hyperedges
+        # -------------------------------
+        anchorset_id = anchor_nodes + anchor_hyper_nodes
+
+        # -------------------------------
+        # 6️⃣ محاسبهٔ dist_max و argmax
+        # -------------------------------
+        data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+        return
+
+
     # ------------------------------------------------------------
     #  تبدیل به قالب PGNN و محاسبهٔ dists_max / argmax
     # ------------------------------------------------------------
