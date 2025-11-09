@@ -59,7 +59,7 @@ def make_args():
 
     #anchor selection
     parser.add_argument('--anchor_method', dest='anchor_method', default='random', type=str,
-                    choices=['random', 'degree', 'degree_coverage', 'enhanced_degree_coverage', 'degree_farthest', 'betweenness', 'eigenvector', 'hyper'],
+                    choices=['random', 'degree', 'degree_coverage', 'enhanced_degree_coverage', 'degree_farthest', 'betweenness', 'eigenvector', 'hyper' , 'learnable_hybrid'],
                     help='anchor selection method')
     #agg_s in paper
     parser.add_argument('--aggregation', dest='aggregation', default='mean', type=str,
@@ -84,6 +84,14 @@ def make_args():
                     help='weight for neighbor-similarity regularizer')
     parser.add_argument('--ns_mode', dest='ns_mode', default='cos', type=str,
                     choices=['cos'], help='neighbor similarity mode')
+
+    parser.add_argument('--small_n_threshold', type=int, default=10000,
+                    help='N <= this → full Gumbel-Softmax; else batch mode')
+    parser.add_argument('--anchor_tau', type=float, default=0.5, help='Gumbel temperature')
+    parser.add_argument('--anchor_batch_size', type=int, default=5000, help='Batch size for large graphs')
+    parser.add_argument('--anchor_aux_w', type=float, default=1e-3, help='Weight for auxiliary anchor loss')
+    parser.add_argument('--anchor_k_scale', type=float, default=1.0,
+                    help='Scale of K; effective K = floor((log2 N)^2 * anchor_k_scale)')
 
     
     parser.set_defaults(gpu=True, task='both', model='GCN', dataset='All',
