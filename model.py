@@ -9,6 +9,24 @@ import pdb
 import math
 
 ####################### Basic Ops #############################
+class AnchorSelector(nn.Module):
+    """Learnable MLP for anchor scoring"""
+    def __init__(self, dim_in, dim_hidden=None):
+        super().__init__()
+        if dim_hidden is None:
+            dim_hidden = max(16, dim_in // 2)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim_in, dim_hidden),
+            nn.ReLU(),
+            nn.Linear(dim_hidden, 1)
+        )
+
+    def forward_scores(self, H):
+        # H: [N, d]
+        return self.mlp(H).squeeze(-1)  # [N]
+
+
+
 
 # # PGNN layer, only pick closest node for message passing
 class PGNN_layer(nn.Module):
