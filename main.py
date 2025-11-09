@@ -128,7 +128,14 @@ if __name__ == '__main__':
         
                 
                 # loss
-                optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=5e-4)
+                params = list(model.parameters())
+                
+                # اگر روش learnable فعال است، پارامترهای MLPها را هم اضافه کن
+                if args.anchor_method == 'learnable_hybrid':
+                    for data in data_list:
+                        if hasattr(data, 'anchor_selector'):
+                            params += list(data.anchor_selector.parameters())
+                optimizer = torch.optim.Adam(params, lr=args.lr, weight_decay=5e-4)
                 if 'link' in args.task:
                     loss_func = nn.BCEWithLogitsLoss()
                     out_act = nn.Sigmoid()
@@ -143,8 +150,13 @@ if __name__ == '__main__':
                     shuffle(data_list)
                     effective_len = len(data_list)//args.batch_size*len(data_list)
                     for id, data in enumerate(data_list[:effective_len]):
-                        #تغییر برای ارگومان
-                        if args.permute:
+                        # --- انتخاب انکرها ---
+                        # حالت‌های معمولی (random, degree, hyper, ...)
+                        if args.permute and args.anchor_method != 'learnable_hybrid':
+                            preselect_anchor(data, layer_num=args.layer_num, anchor_num=args.anchor_num, device=device, args=args)
+
+                        # حالت learnable_hybrid: refresh سبک مخصوص خودش
+                        if args.anchor_method == 'learnable_hybrid':
                             preselect_anchor(data, layer_num=args.layer_num, anchor_num=args.anchor_num, device=device, args=args)
                         # print(data)
                         out = model(data)
@@ -161,6 +173,25 @@ if __name__ == '__main__':
                         if getattr(args, 'lambda_ns', 0.0) > 0:
                             loss_ns = neighbor_sim_loss(out, data.mask_link_positive_train, device, mode=args.ns_mode)
                             loss = loss + args.lambda_ns * loss_ns
+
+                        # === Auxiliary Loss برای learnable_hybrid ===
+                        if args.anchor_method == 'learnable_hybrid' and hasattr(data, 'anchor_softmask'):
+                            # اطمینان از وجود anchor_scores
+                            if hasattr(data, 'anchor_scores'):
+                                probs = torch.softmax(data.anchor_scores, dim=0)
+                                entropy = -(probs * (probs.clamp_min(1e-9)).log()).sum()
+                            else:
+                                entropy = 0.0
+
+                            # تنوع در انتخاب انکرها (soft mask)
+                            diversity = 1.0 - (data.anchor_softmask @ data.anchor_softmask)
+
+                            # ترکیب دو بخش entropy و diversity
+                            loss_aux = args.anchor_aux_w * (0.5 * entropy + 0.5 * diversity)
+
+                            # افزودن به loss اصلی
+                            loss = loss + loss_aux
+
 
 
                         # update
