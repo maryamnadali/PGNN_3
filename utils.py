@@ -647,7 +647,7 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
         data.anchor_scores = sel.forward_scores(H).detach() if N > thr else scores
         data.anchor_softmask = mask_soft
 
-        print(f"[learnable_hybrid] N={N}, K={K}, anchors selected {len(topk_idx)}")
+        #print(f"[learnable_hybrid] N={N}, K={K}, anchors selected {len(topk_idx)}")
         return
 
     
