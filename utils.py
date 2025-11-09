@@ -588,6 +588,68 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
         data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
         return
 
+    elif method == 'learnable_hybrid':
+        import math, torch
+        import torch.nn.functional as F
+        from model import GCN, AnchorSelector
+
+        device = data.x.device
+        N = int(data.num_nodes)
+        K = max(1, int((math.log2(max(N,2))**2) * getattr(args, 'anchor_k_scale', 1.0)))
+        tau = getattr(args, 'anchor_tau', 0.5)
+        bs  = getattr(args, 'anchor_batch_size', 5000)
+        thr = getattr(args, 'small_n_threshold', 10000)
+
+        # ---- 1️⃣ GCN: فقط feature extractor (بدون گرادیان) ----
+        gcn = GCN(
+            input_dim=data.x.shape[1],
+            feature_dim=32,
+            hidden_dim=32,
+            output_dim=32,
+            feature_pre=True,
+            layer_num=2,
+            dropout=False
+        ).to(device)
+
+        with torch.no_grad():
+            H = gcn(data)  # [N, d]
+        H = H.detach()
+        data.node_emb = H
+
+        # ---- 2️⃣ MLP (AnchorSelector) ----
+        if not hasattr(data, 'anchor_selector'):
+            data.anchor_selector = AnchorSelector(H.size(1)).to(device)
+        sel = data.anchor_selector
+
+        # ---- 3️⃣ Scoring ----
+        if N <= thr:
+            # گراف کوچک → Gumbel-Softmax کامل
+            scores = sel.forward_scores(H)              # [N]
+            probs  = torch.softmax(scores, dim=0)       # [N]
+            mask_soft = F.gumbel_softmax(probs.log(), tau=tau, hard=False)
+            topk_idx = torch.topk(mask_soft, K).indices.tolist()
+        else:
+            # گراف بزرگ → batch-wise
+            all_scores = []
+            for start in range(0, N, bs):
+                end = min(start+bs, N)
+                s = sel.forward_scores(H[start:end])     # [b]
+                all_scores.append(s)
+            all_scores = torch.cat(all_scores)
+            mask_soft = torch.softmax(all_scores / tau, dim=0)
+            topk_idx = torch.topk(mask_soft, K).indices.tolist()
+
+        # ---- 4️⃣ برای PGNN اصلی: فاصله‌ها از انکرهای top-k ----
+        anchorset_id = [[int(i)] for i in topk_idx]
+        data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+
+        # ---- 5️⃣ ذخیره خروجی برای loss کمکی ----
+        data.anchor_scores = sel.forward_scores(H).detach() if N > thr else scores
+        data.anchor_softmask = mask_soft
+
+        print(f"[learnable_hybrid] N={N}, K={K}, anchors selected {len(topk_idx)}")
+        return
+
     
         
     for i in range(anchor_size_num):
