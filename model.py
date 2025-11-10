@@ -405,7 +405,8 @@ class GIN(torch.nn.Module):
 
 class PGNN(torch.nn.Module):
     def __init__(self, input_dim, feature_dim, hidden_dim, output_dim,
-                 feature_pre=True, layer_num=2, dropout=True, aggregation='mean', comb_mode='concat', prob_factor=5, prob_min_top=1, **kwargs):
+                 feature_pre=True, layer_num=2, dropout=True, aggregation='mean', comb_mode='concat',
+                 prob_factor=5, prob_min_top=1, neighbour_forward=False, **kwargs):
         super(PGNN, self).__init__()
         self.feature_pre = feature_pre
         self.layer_num = layer_num
@@ -413,6 +414,7 @@ class PGNN(torch.nn.Module):
         self.aggregation = aggregation
         self.comb_mode = comb_mode
         self.prob_context_mode = kwargs.get('prob_context_mode', 'concat')
+        self.neighbour_forward = neighbour_forward
                      
         if layer_num == 1:
             hidden_dim = output_dim
@@ -429,10 +431,38 @@ class PGNN(torch.nn.Module):
             self.conv_out = PGNN_layer(hidden_dim, output_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, prob_factor=prob_factor,
                                          prob_min_top=prob_min_top, prob_context_mode=self.prob_context_mode,)
 
+        # ----------------- neighbour gate (only if enabled) -----------------
+        if self.neighbour_forward:
+            # اگر بعد از linear_pre خروجی به hidden_dim می‌رسد، ۲*hidden_dim درست است
+            self.gate_linear = nn.Linear(2 * hidden_dim, hidden_dim)
+            self.gate_proj = nn.Linear(hidden_dim, 1)
+        # ---------------------------------------------------------------------
+
     def forward(self, data):
         x = data.x
         if self.feature_pre:
             x = self.linear_pre(x)
+
+        # ==================== neighbour-gate before anchor aggregation ====================
+        if self.neighbour_forward and hasattr(data, "edge_index"):
+            edge_index = to_undirected(data.edge_index)
+            src, dst = edge_index[0], edge_index[1]
+            N = x.size(0)
+
+            # میانگین همسایه‌ها
+            agg = torch.zeros_like(x).index_add_(0, dst, x[src])
+            deg = degree(dst, N).unsqueeze(-1)
+            neighbor_mean = agg / deg.clamp_min(1.0)
+
+            # گیت برداری یادگیرنده
+            cat = torch.cat([x, neighbor_mean], dim=-1)
+            h_gate = torch.relu(self.gate_linear(cat))
+            gate = torch.sigmoid(self.gate_proj(h_gate))  # [N,1]
+
+            # ترکیب وزن‌دار
+            x = gate * x + (1.0 - gate) * neighbor_mean
+        # =====================================================================
+        
         x_position, x = self.conv_first(x, data.dists_max, data.dists_argmax)
         if self.layer_num == 1:
             return x_position
