@@ -406,7 +406,7 @@ class GIN(torch.nn.Module):
 class PGNN(torch.nn.Module):
     def __init__(self, input_dim, feature_dim, hidden_dim, output_dim,
                  feature_pre=True, layer_num=2, dropout=True, aggregation='mean', comb_mode='concat',
-                 prob_factor=5, prob_min_top=1, neighbour_forward=False, **kwargs):
+                 prob_factor=5, prob_min_top=1, neighbor_forward=False, **kwargs):
         super(PGNN, self).__init__()
         self.feature_pre = feature_pre
         self.layer_num = layer_num
@@ -414,7 +414,7 @@ class PGNN(torch.nn.Module):
         self.aggregation = aggregation
         self.comb_mode = comb_mode
         self.prob_context_mode = kwargs.get('prob_context_mode', 'concat')
-        self.neighbour_forward = neighbour_forward
+        self.neighbor_forward = neighbor_forward
                      
         if layer_num == 1:
             hidden_dim = output_dim
@@ -431,8 +431,8 @@ class PGNN(torch.nn.Module):
             self.conv_out = PGNN_layer(hidden_dim, output_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, prob_factor=prob_factor,
                                          prob_min_top=prob_min_top, prob_context_mode=self.prob_context_mode,)
 
-        # ----------------- neighbour gate (only if enabled) -----------------
-        if self.neighbour_forward:
+        # ----------------- neighbor gate (only if enabled) -----------------
+        if self.neighbor_forward:
             # اگر بعد از linear_pre خروجی به hidden_dim می‌رسد، ۲*hidden_dim درست است
             self.gate_linear = nn.Linear(2 * hidden_dim, hidden_dim)
             self.gate_proj = nn.Linear(hidden_dim, 1)
@@ -443,8 +443,8 @@ class PGNN(torch.nn.Module):
         if self.feature_pre:
             x = self.linear_pre(x)
 
-        # ==================== neighbour-gate before anchor aggregation ====================
-        if self.neighbour_forward and hasattr(data, "edge_index"):
+        # ==================== neighbor-gate before anchor aggregation ====================
+        if self.neighbor_forward and hasattr(data, "edge_index"):
             edge_index = to_undirected(data.edge_index)
             src, dst = edge_index[0], edge_index[1]
             N = x.size(0)
