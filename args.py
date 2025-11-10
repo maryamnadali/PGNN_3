@@ -59,7 +59,7 @@ def make_args():
 
     #anchor selection
     parser.add_argument('--anchor_method', dest='anchor_method', default='random', type=str,
-                    choices=['random', 'degree', 'degree_coverage', 'enhanced_degree_coverage', 'degree_farthest', 'betweenness', 'eigenvector', 'hyper' , 'learnable_hybrid'],
+                    choices=['random', 'degree', 'degree_coverage', 'enhanced_degree_coverage', 'degree_farthest', 'betweenness', 'eigenvector', 'hyper', 'learnable_hybrid'],
                     help='anchor selection method')
     #agg_s in paper
     parser.add_argument('--aggregation', dest='aggregation', default='mean', type=str,
@@ -85,6 +85,12 @@ def make_args():
     parser.add_argument('--ns_mode', dest='ns_mode', default='cos', type=str,
                     choices=['cos'], help='neighbor similarity mode')
 
+    #neighbor use before anchor use
+    parser.add_argument('--neighbor_forward', action='store_true', default=False,
+                    help='If True, combines node and neighbor embeddings before anchor aggregation using a learnable gate.')
+
+
+    #learnable_hybrid args
     parser.add_argument('--small_n_threshold', type=int, default=10000,
                     help='N <= this → full Gumbel-Softmax; else batch mode')
     parser.add_argument('--anchor_tau', type=float, default=0.5, help='Gumbel temperature')
