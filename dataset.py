@@ -62,6 +62,33 @@ def get_tg_dataset(args, dataset_name, use_cache=True, remove_feature=False):
 
     elif dataset_name in ['Amazon']:
         dataset = tg.datasets.Amazon(root='path/to/dataset', name='Photo')
+        if args.task == 'link_pair':
+            data_list = []
+            for data in dataset:
+                n = data.num_nodes
+                y = data.y.numpy()
+                label = np.zeros((n, n), dtype=int)
+
+                # ساخت ماتریس برچسب جفت‌نود: 1 اگر هم‌کلاس باشند
+                for i in range(n):
+                    for j in range(i):
+                        if y[i] == y[j]:
+                            label[i, j] = 1
+
+                # تبدیل گراف torch_geometric به networkx
+                G = tg.utils.to_networkx(data)
+                graphs = [G]
+                features = [data.x.numpy()]
+                edge_labels = [label]
+
+                data_list = nx_to_tg_data(graphs, features, edge_labels)
+
+                for d in data_list:
+                    get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True, infer_link_positive=False)
+                    dist = precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
+                    d.dists = torch.from_numpy(dist).float()
+
+            return data_list
     else:
         try:
             dataset = load_tg_dataset(dataset_name)
