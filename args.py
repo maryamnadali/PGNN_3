@@ -59,7 +59,8 @@ def make_args():
 
     #anchor selection
     parser.add_argument('--anchor_method', dest='anchor_method', default='random', type=str,
-                    choices=['random', 'degree', 'degree_coverage', 'enhanced_degree_coverage', 'degree_farthest', 'betweenness', 'eigenvector', 'hyper', 'learnable_hybrid'],
+                    choices=['random', 'degree', 'degree_coverage', 'enhanced_degree_coverage', 'degree_farthest',
+                             'betweenness', 'eigenvector', 'hyper', 'learnable_hybrid', 'community'],
                     help='anchor selection method')
     #agg_s in paper
     parser.add_argument('--aggregation', dest='aggregation', default='mean', type=str,
