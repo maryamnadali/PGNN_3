@@ -650,6 +650,42 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
         #print(f"[learnable_hybrid] N={N}, K={K}, anchors selected {len(topk_idx)}")
         return
 
+    elif method == 'community':
+        import math
+        import networkx as nx
+        from networkx.algorithms.community import greedy_modularity_communities
+        import random
+
+        # تعداد انکرها → مثل random: m^2
+        m = int(math.log2(data.num_nodes))
+        anchor_num = m * m
+
+        # ساخت گراف NetworkX
+        G = nx.Graph()
+        edges = data.edge_index.cpu().numpy()
+        G.add_edges_from(edges.T)
+
+        # اجرای greedy modularity
+        comms = list(greedy_modularity_communities(G))
+
+        # هر کامیونیتی یک anchor-set چند عضوی است
+        anchorset_id = [list(c) for c in comms]
+
+        # اگر تعداد کامیونیتی‌ها کمتر از anchor_num بود → random single-node
+        if len(anchorset_id) < anchor_num:
+            needed = anchor_num - len(anchorset_id)
+            nodes = list(G.nodes())
+            for _ in range(needed):
+                anchorset_id.append([random.choice(nodes)])
+
+        # اگر بیشتر از anchor_num بود → بزرگ‌ترین کامیونیتی‌ها را نگه‌دار
+        if len(anchorset_id) > anchor_num:
+            anchorset_id = sorted(anchorset_id, key=lambda x: -len(x))[:anchor_num]
+
+        # محاسبهٔ dist_max و argmax (خود مدل نزدیک‌ترین عضو هر set را انتخاب می‌کند)
+        data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+        return
+
     
         
     for i in range(anchor_size_num):
