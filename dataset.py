@@ -62,70 +62,92 @@ def get_tg_dataset(args, dataset_name, use_cache=True, remove_feature=False):
 
     # -------------------- Amazon (Computers / Photo) --------------------
     elif dataset_name in ['Amazon-Computers', 'Amazon-Photo']:
-        name = 'Computers' if dataset_name == 'Amazon-Computers' else 'Photo'
-        dataset = tg.datasets.Amazon(root='datasets/Amazon', name=name)
+      name = 'Computers' if dataset_name == 'Amazon-Computers' else 'Photo'
+      dataset = tg.datasets.Amazon(root='datasets/Amazon', name=name)
+      data = dataset[0]
 
-        data = dataset[0]
+    # ------------------------------------------
+    # 1) تبدیل PyG → NetworkX برای محاسبه dists
+    # ------------------------------------------
+      G = tg.utils.to_networkx(data, to_undirected=True)
 
-        # اگر link_pair خواستی:
-        if args.task == 'link_pair':
-            n = data.num_nodes
-            y = data.y.numpy()
+    # Feature
+      features = data.x.numpy()
 
-            label = np.zeros((n, n), dtype=int)
-            for i in range(n):
-                for j in range(i):
-                    if y[i] == y[j]:
-                        label[i, j] = 1
+    # ------------------------------------------
+    # 2) اگر task = link_pair → ساخت label
+    # ------------------------------------------
+      if args.task == 'link_pair':
+          n = data.num_nodes
+          y = data.y.numpy()
+          label = np.zeros((n, n), dtype=int)
+          for i in range(n):
+              for j in range(i):
+                  if y[i] == y[j]:
+                      label[i, j] = 1
+          edge_labels = [label]
+      else:
+          edge_labels = [None]
 
-            G = tg.utils.to_networkx(data, to_undirected=True)
-            graphs = [G]
-            features = [data.x.numpy()]
-            edge_labels = [label]
+    # ------------------------------------------
+    # 3) ساخت یک graph واحد (Amazon یک گراف است)
+    # ------------------------------------------
+      graphs = [G]
+      features_list = [features]
 
-            data_list = nx_to_tg_data(graphs, features, edge_labels)
+    # ------------------------------------------
+    # 4) تبدیل NX → PyG Data
+    # ------------------------------------------
+      data_list = nx_to_tg_data(graphs, features_list, edge_labels)
 
-            for d in data_list:
-                get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True)
-                d.dists = torch.from_numpy(
-                    precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
-                ).float()
+    # ------------------------------------------
+    # 5) محاسبه ماسک لینک + فاصله برای PGNN
+    # ------------------------------------------
+      for d in data_list:
+          get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True)
 
-            return data_list
+          d.dists = torch.from_numpy(
+              precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
+          ).float()
 
-        return [data]
+      return data_list
+
 
         # -------------------- Flickr --------------------
     elif dataset_name == 'Flickr':
-        dataset = tg.datasets.Flickr(root="datasets/Flickr")
-        data = dataset[0]
+      dataset = tg.datasets.Flickr(root="datasets/Flickr")
+      data = dataset[0]
 
-        # اگر link_pair نیاز داری
-        if args.task == 'link_pair':
-            n = data.num_nodes
-            y = data.y.numpy()
-            label = np.zeros((n, n), dtype=int)
-            for i in range(n):
-                for j in range(i):
-                    if y[i] == y[j]:
-                        label[i, j] = 1
+      # NetworkX graph
+      G = tg.utils.to_networkx(data, to_undirected=True)
+      features = data.x.numpy()
 
-            G = tg.utils.to_networkx(data, to_undirected=True)
-            graphs = [G]
-            features = [data.x.numpy()]
-            edge_labels = [label]
+      if args.task == 'link_pair':
+          n = data.num_nodes
+          y = data.y.numpy()
+          label = np.zeros((n, n), dtype=int)
+          for i in range(n):
+              for j in range(i):
+                  if y[i] == y[j]:
+                      label[i, j] = 1
+          edge_labels = [label]
+      else:
+          edge_labels = [None]
 
-            data_list = nx_to_tg_data(graphs, features, edge_labels)
+      graphs = [G]
+      features_list = [features]
 
-            for d in data_list:
-                get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True)
-                d.dists = torch.from_numpy(
-                    precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
-                ).float()
+      data_list = nx_to_tg_data(graphs, features_list, edge_labels)
 
-            return data_list
+      for d in data_list:
+          get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True)
 
-        return [data]
+          d.dists = torch.from_numpy(
+              precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
+          ).float()
+
+      return data_list
+
 
 
     
