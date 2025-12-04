@@ -60,35 +60,75 @@ def get_tg_dataset(args, dataset_name, use_cache=True, remove_feature=False):
             return data_list
     # ---------------------------------------------------------------------------
 
-    elif dataset_name in ['Amazon']:
-        dataset = tg.datasets.Amazon(root='path/to/dataset', name='Photo')
+    # -------------------- Amazon (Computers / Photo) --------------------
+    elif dataset_name in ['Amazon-Computers', 'Amazon-Photo']:
+        name = 'Computers' if dataset_name == 'Amazon-Computers' else 'Photo'
+        dataset = tg.datasets.Amazon(root='datasets/Amazon', name=name)
+
+        data = dataset[0]
+
+        # اگر link_pair خواستی:
         if args.task == 'link_pair':
-            data_list = []
-            for data in dataset:
-                n = data.num_nodes
-                y = data.y.numpy()
-                label = np.zeros((n, n), dtype=int)
+            n = data.num_nodes
+            y = data.y.numpy()
 
-                # ساخت ماتریس برچسب جفت‌نود: 1 اگر هم‌کلاس باشند
-                for i in range(n):
-                    for j in range(i):
-                        if y[i] == y[j]:
-                            label[i, j] = 1
+            label = np.zeros((n, n), dtype=int)
+            for i in range(n):
+                for j in range(i):
+                    if y[i] == y[j]:
+                        label[i, j] = 1
 
-                # تبدیل گراف torch_geometric به networkx
-                G = tg.utils.to_networkx(data)
-                graphs = [G]
-                features = [data.x.numpy()]
-                edge_labels = [label]
+            G = tg.utils.to_networkx(data, to_undirected=True)
+            graphs = [G]
+            features = [data.x.numpy()]
+            edge_labels = [label]
 
-                data_list = nx_to_tg_data(graphs, features, edge_labels)
+            data_list = nx_to_tg_data(graphs, features, edge_labels)
 
-                for d in data_list:
-                    get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True, infer_link_positive=False)
-                    dist = precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
-                    d.dists = torch.from_numpy(dist).float()
+            for d in data_list:
+                get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True)
+                d.dists = torch.from_numpy(
+                    precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
+                ).float()
 
             return data_list
+
+        return [data]
+
+        # -------------------- Flickr --------------------
+    elif dataset_name == 'Flickr':
+        dataset = tg.datasets.Flickr(root="datasets/Flickr")
+        data = dataset[0]
+
+        # اگر link_pair نیاز داری
+        if args.task == 'link_pair':
+            n = data.num_nodes
+            y = data.y.numpy()
+            label = np.zeros((n, n), dtype=int)
+            for i in range(n):
+                for j in range(i):
+                    if y[i] == y[j]:
+                        label[i, j] = 1
+
+            G = tg.utils.to_networkx(data, to_undirected=True)
+            graphs = [G]
+            features = [data.x.numpy()]
+            edge_labels = [label]
+
+            data_list = nx_to_tg_data(graphs, features, edge_labels)
+
+            for d in data_list:
+                get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True)
+                d.dists = torch.from_numpy(
+                    precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
+                ).float()
+
+            return data_list
+
+        return [data]
+
+
+    
     else:
         try:
             dataset = load_tg_dataset(dataset_name)
