@@ -112,41 +112,48 @@ def get_tg_dataset(args, dataset_name, use_cache=True, remove_feature=False):
 
       return data_list
 
+    # -------------------- AttributedGraphDataset: Wiki / BlogCatalog / Facebook / Flickr --------------------
+    elif dataset_name in ['Wiki', 'BlogCatalog', 'Facebook', 'Flickr']:
+        dataset = tg.datasets.AttributedGraphDataset(
+            root='datasets/AttributedGraphs',
+            name=dataset_name
+        )
+        data = dataset[0]
 
-        # -------------------- Flickr --------------------
-    elif dataset_name == 'Flickr':
-      dataset = tg.datasets.Flickr(root="datasets/Flickr")
-      data = dataset[0]
+        # تبدیل به NetworkX
+        G = tg.utils.to_networkx(data, to_undirected=True)
 
-      # NetworkX graph
-      G = tg.utils.to_networkx(data, to_undirected=True)
-      features = data.x.numpy()
+        features = data.x.numpy()
 
-      if args.task == 'link_pair':
-          n = data.num_nodes
-          y = data.y.numpy()
-          label = np.zeros((n, n), dtype=int)
-          for i in range(n):
-              for j in range(i):
-                  if y[i] == y[j]:
-                      label[i, j] = 1
-          edge_labels = [label]
-      else:
-          edge_labels = [None]
+        # ----- ساخت label برای link_pair -----
+        if args.task == 'link_pair':
+            n = data.num_nodes
+            # این دیتاست‌ها label ندارند → فقط 0/1 بر اساس هم‌کامپوننت بودن
+            label = np.zeros((n, n), dtype=int)
+            for comp in nx.connected_components(G):
+                comp = list(comp)
+                for i in range(len(comp)):
+                    for j in range(i):
+                        label[comp[i], comp[j]] = 1
+            edge_labels = [label]
+        else:
+            edge_labels = [None]
 
-      graphs = [G]
-      features_list = [features]
+        graphs = [G]
+        features_list = [features]
 
-      data_list = nx_to_tg_data(graphs, features_list, edge_labels)
+        data_list = nx_to_tg_data(graphs, features_list, edge_labels)
 
-      for d in data_list:
-          get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True)
+        # فاصله‌ها و ماسک لینک
+        for d in data_list:
+            get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True)
 
-          d.dists = torch.from_numpy(
-              precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
-          ).float()
+            d.dists = torch.from_numpy(
+                precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
+            ).float()
 
-      return data_list
+        return data_list
+
 
 
 
