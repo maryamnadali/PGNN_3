@@ -113,28 +113,33 @@ def get_tg_dataset(args, dataset_name, use_cache=True, remove_feature=False):
       return data_list
 
     # -------------------- AttributedGraphDataset: Wiki / BlogCatalog / Facebook / Flickr --------------------
-    elif dataset_name in ['Wiki', 'BlogCatalog', 'Facebook', 'Flickr']:
+        # ----------------- AttributedGraphDataset: Wiki / BlogCatalog / Flickr / Facebook -----------------
+    elif dataset_name in ['Wiki', 'BlogCatalog', 'Flickr', 'Facebook']:
+
         dataset = tg.datasets.AttributedGraphDataset(
             root='datasets/AttributedGraphs',
             name=dataset_name
         )
         data = dataset[0]
 
-        # تبدیل به NetworkX
+        # ویژگی‌ها ممکن است sparse باشند → dense کن
+        features = data.x.to_dense().numpy()
+
+        # ساخت گراف
         G = tg.utils.to_networkx(data, to_undirected=True)
 
-        features = data.x.numpy()
-
-        # ----- ساخت label برای link_pair -----
+        # ---------- link_pair ----------
         if args.task == 'link_pair':
             n = data.num_nodes
-            # این دیتاست‌ها label ندارند → فقط 0/1 بر اساس هم‌کامپوننت بودن
             label = np.zeros((n, n), dtype=int)
+
+            # چون label ندارد → نودهای داخل یک کامپوننت را مشابه درنظر می‌گیریم
             for comp in nx.connected_components(G):
                 comp = list(comp)
                 for i in range(len(comp)):
                     for j in range(i):
                         label[comp[i], comp[j]] = 1
+
             edge_labels = [label]
         else:
             edge_labels = [None]
@@ -144,18 +149,14 @@ def get_tg_dataset(args, dataset_name, use_cache=True, remove_feature=False):
 
         data_list = nx_to_tg_data(graphs, features_list, edge_labels)
 
-        # فاصله‌ها و ماسک لینک
+        # ---------- فاصله PGNN + ماسک لینک ----------
         for d in data_list:
             get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True)
-
             d.dists = torch.from_numpy(
                 precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
             ).float()
 
         return data_list
-
-
-
 
     
     else:
