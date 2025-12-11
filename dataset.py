@@ -158,6 +158,55 @@ def get_tg_dataset(args, dataset_name, use_cache=True, remove_feature=False):
 
         return data_list
 
+        # -------------------- HeterophilousGraphDataset: Minesweeper / Tolokers --------------------
+        elif dataset_name in ['Minesweeper', 'Tolokers']:
+
+            dataset = tg.datasets.HeterophilousGraphDataset(
+                root='datasets/HeteroGraphs',
+                name=dataset_name
+            )
+            data = dataset[0]
+
+            # ویژگی‌ها ممکن است sparse باشند → dense کن
+            x = data.x
+            if hasattr(x, "to_dense"):
+                x = x.to_dense()
+            features = x.numpy()
+
+            # ساخت گراف
+            G = tg.utils.to_networkx(data, to_undirected=True)
+
+            # ---------- link_pair ----------
+            if args.task == 'link_pair':
+                n = data.num_nodes
+                y = data.y.numpy()
+                label = np.zeros((n, n), dtype=int)
+
+                # نودهایی که label مشترک دارند = positive pair
+                for i in range(n):
+                    for j in range(i):
+                        if y[i] == y[j]:
+                            label[i, j] = 1
+
+                edge_labels = [label]
+            else:
+                edge_labels = [None]
+
+            graphs = [G]
+            features_list = [features]
+
+            # تبدیل NX → PyG
+            data_list = nx_to_tg_data(graphs, features_list, edge_labels)
+
+            # فاصله PGNN + ماسک لینک
+            for d in data_list:
+                get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True)
+                dist = precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
+                d.dists = torch.from_numpy(dist).float()
+
+            return data_list
+
+
     
     else:
         try:
