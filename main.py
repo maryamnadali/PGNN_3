@@ -41,9 +41,11 @@ if __name__ == '__main__':
         args.task = task  # مقدار آرگومان رو آپدیت کن که همه جا درست کار کنه
         if args.dataset=='All':
             if task == 'link':
-                datasets_name = ['grid','communities','ppi', 'Amazon-Computers','Amazon-Photo','Flickr', 'PubMed', 'karate', 'Wiki','BlogCatalog','Facebook']
+                datasets_name = ['grid','communities','ppi', 'Amazon-Computers','Amazon-Photo','Flickr',
+                                 'PubMed', 'karate', 'Wiki','BlogCatalog','Facebook','Minesweeper','Tolokers']
             else:
-                datasets_name = ['communities', 'email', 'protein', 'Amazon-Computers','Amazon-Photo','Flickr', 'PubMed', 'karate', 'Wiki','BlogCatalog','Facebook']
+                datasets_name = ['communities', 'email', 'protein', 'Amazon-Computers','Amazon-Photo','Flickr',
+                                 'PubMed', 'karate', 'Wiki','BlogCatalog','Facebook','Minesweeper','Tolokers']
         else:
             datasets_name = [args.dataset]
         print(f"\n🔁 Now running TASK: {task.upper()} on dataset(s): {datasets_name}\n")
