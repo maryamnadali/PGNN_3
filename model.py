@@ -39,6 +39,7 @@ class PGNN_layer(nn.Module):
         self.comb_mode = comb_mode.lower()
         self.prob_factor = prob_factor
         self.prob_min_top = prob_min_top
+        self.prob_context_mode = prob_context_mode.lower()
 
         # Nonlinear Class is to compute s(u,v) but through neural network (in paper its not leranable)
         # Nonlinear class is used to compute s(v, u) as a learnable function
