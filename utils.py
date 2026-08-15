@@ -346,6 +346,7 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
             data.dists,
             device
         )
+        return
 
     elif method == 'random_singleton':
 
@@ -376,6 +377,7 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
             data.dists,
             device
         )
+        return
     
     elif method == 'betweenness':
         import math
