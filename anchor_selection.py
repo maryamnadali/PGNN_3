@@ -483,10 +483,12 @@ class GlobalTopKSelector(nn.Module):
             H_sel
         ).squeeze(-1)                     # [N]
 
+        """
         # Stabilize score scale.
         scores = scores / scores.norm(
             p=2
         ).clamp_min(1e-12)
+        """
 
         # -------------------------------------------------
         # 3) Hard global Top-K
