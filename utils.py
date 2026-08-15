@@ -4,6 +4,7 @@ import numpy as np
 import multiprocessing as mp
 import random
 import torch.nn.functional as F
+from anchor_selection import compute_anchor_budget
 
 
 
@@ -212,16 +213,90 @@ def precompute_dist_data(edge_index, num_nodes, approximate=0):
         return dists_array
 
 
+def get_random_anchorset(n, anchor_count):
+    """
+    Budget-controlled multi-scale random anchor sets for Original P-GNN.
 
-def get_random_anchorset(n,c=0.5):
+    - Exactly anchor_count anchor sets are generated.
+    - Original exponential P-GNN scales are preserved:
+          floor(n/2), floor(n/4), ..., floor(n/2^m)
+      where m = floor(log2(n)).
+    - The K sets are distributed as evenly as possible across scales.
+    """
+
+    n = int(n)
+    anchor_count = int(anchor_count)
+
+    if n < 1:
+        raise ValueError("n must be >= 1.")
+
+    if anchor_count < 1:
+        raise ValueError("anchor_count must be >= 1.")
+
+    # Degenerate one-node graph
+    if n == 1:
+        return [np.array([0], dtype=int) for _ in range(anchor_count)]
+
     m = int(np.log2(n))
-    copy = int(c*m)
+
+    # Original P-GNN exponential anchor-set sizes
+    anchor_sizes = [
+        max(1, int(n / np.exp2(i + 1)))
+        for i in range(m)
+    ]
+
+    # Number of anchor sets assigned to each scale
+    counts = [0] * m
+
+    if anchor_count >= m:
+        # Give every scale the same base number
+        base = anchor_count // m
+        remainder = anchor_count % m
+
+        counts = [base] * m
+
+        # Spread remaining sets across the entire scale range
+        if remainder > 0:
+            if remainder == 1:
+                extra_indices = [m // 2]
+            else:
+                extra_indices = np.round(
+                    np.linspace(0, m - 1, remainder)
+                ).astype(int).tolist()
+
+            for idx in extra_indices:
+                counts[idx] += 1
+
+    else:
+        # K < number of scales:
+        # choose K scales approximately uniformly across the full range
+        if anchor_count == 1:
+            selected_indices = [m // 2]
+        else:
+            selected_indices = np.round(
+                np.linspace(0, m - 1, anchor_count)
+            ).astype(int).tolist()
+
+        for idx in selected_indices:
+            counts[idx] = 1
+
     anchorset_id = []
-    for i in range(m):
-        anchor_size = int(n/np.exp2(i + 1))
-        for j in range(copy):
-            anchorset_id.append(np.random.choice(n,size=anchor_size,replace=False))
+
+    for anchor_size, count in zip(anchor_sizes, counts):
+        for _ in range(count):
+            anchorset_id.append(
+                np.random.choice(
+                    n,
+                    size=anchor_size,
+                    replace=False
+                )
+            )
+
+    assert len(anchorset_id) == anchor_count
+
     return anchorset_id
+
+
 
 def get_dist_max(anchorset_id, dist, device):
     dist_max = torch.zeros((dist.shape[0],len(anchorset_id))).to(device)
@@ -253,8 +328,24 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
     
     if method == 'random':
         # روش فعلی، یعنی استفاده از get_random_anchorset
-        anchorset_id = get_random_anchorset(data.num_nodes, c=1)
-        data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
+        K = compute_anchor_budget(
+            num_nodes=data.num_nodes,
+            mode=args.anchor_budget,
+            fixed_k=args.anchor_num,
+            reduction=args.anchor_reduction,
+            exact_fixed=args.anchor_fixed_exact,
+        )
+
+        anchorset_id = get_random_anchorset(
+            data.num_nodes,
+            anchor_count=K
+        )
+
+        data.dists_max, data.dists_argmax = get_dist_max(
+            anchorset_id,
+            data.dists,
+            device
+        )
 
     
     elif method == 'betweenness':
