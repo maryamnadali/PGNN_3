@@ -1,5 +1,6 @@
 from sklearn.metrics import roc_auc_score
 from tensorboardX import SummaryWriter
+import copy
 
 from args import *
 from model import *
@@ -96,8 +97,9 @@ if __name__ == '__main__':
         
             # ====== حلقه تکرار (repeat) ======
             for repeat in range(args.repeat_num):
-                result_val = []
-                result_test = []
+                best_val_auc = -1.0
+                best_epoch = -1
+                best_model_state = None
                 
                 repeat_seed = args.base_seed + repeat
                 set_seed(repeat_seed)
@@ -220,16 +222,12 @@ if __name__ == '__main__':
                         model.eval()
                         loss_train = 0
                         loss_val = 0
-                        loss_test = 0
                         correct_train = 0
                         all_train = 0
                         correct_val = 0
                         all_val = 0
-                        correct_test = 0
-                        all_test = 0
                         auc_train = 0
                         auc_val = 0
-                        auc_test = 0
                         emb_norm_min = 0
                         emb_norm_max = 0
                         emb_norm_mean = 0
@@ -260,45 +258,94 @@ if __name__ == '__main__':
                             label = torch.cat((label_positive, label_negative)).to(device)
                             loss_val += loss_func(pred, label).cpu().data.numpy()
                             auc_val += roc_auc_score(label.flatten().cpu().numpy(), out_act(pred).flatten().data.cpu().numpy())
-                            # test
-                            edge_mask_test = np.concatenate((data.mask_link_positive_test, data.mask_link_negative_test), axis=-1)
-                            nodes_first = torch.index_select(out, 0, torch.from_numpy(edge_mask_test[0, :]).long().to(device))
-                            nodes_second = torch.index_select(out, 0, torch.from_numpy(edge_mask_test[1, :]).long().to(device))
-                            pred = torch.sum(nodes_first * nodes_second, dim=-1)
-                            label_positive = torch.ones([data.mask_link_positive_test.shape[1], ], dtype=pred.dtype)
-                            label_negative = torch.zeros([data.mask_link_negative_test.shape[1], ], dtype=pred.dtype)
-                            label = torch.cat((label_positive, label_negative)).to(device)
-                            loss_test += loss_func(pred, label).cpu().data.numpy()
-                            auc_test += roc_auc_score(label.flatten().cpu().numpy(), out_act(pred).flatten().data.cpu().numpy())
 
                         loss_train /= id+1
                         loss_val /= id+1
-                        loss_test /= id+1
                         emb_norm_min /= id+1
                         emb_norm_max /= id+1
                         emb_norm_mean /= id+1
                         auc_train /= id+1
                         auc_val /= id+1
-                        auc_test /= id+1
+
+                        if auc_val > best_val_auc:
+                            best_val_auc = auc_val
+                            best_epoch = epoch
+                            best_model_state = copy.deepcopy(model.state_dict())
 
                         print(repeat, epoch, 'Loss {:.4f}'.format(loss_train), 'Train AUC: {:.4f}'.format(auc_train),
-                            'Val AUC: {:.4f}'.format(auc_val), 'Test AUC: {:.4f}'.format(auc_test))
+                            'Val AUC: {:.4f}'.format(auc_val))
                         writer_train.add_scalar('repeat_' + str(repeat) + '/auc_'+dataset_name, auc_train, epoch)
                         writer_train.add_scalar('repeat_' + str(repeat) + '/loss_'+dataset_name, loss_train, epoch)
                         writer_val.add_scalar('repeat_' + str(repeat) + '/auc_'+dataset_name, auc_val, epoch)
                         writer_train.add_scalar('repeat_' + str(repeat) + '/loss_'+dataset_name, loss_val, epoch)
-                        writer_test.add_scalar('repeat_' + str(repeat) + '/auc_'+dataset_name, auc_test, epoch)
-                        writer_test.add_scalar('repeat_' + str(repeat) + '/loss_'+dataset_name, loss_test, epoch)
-                        writer_test.add_scalar('repeat_' + str(repeat) + '/emb_min_'+dataset_name, emb_norm_min, epoch)
-                        writer_test.add_scalar('repeat_' + str(repeat) + '/emb_max_'+dataset_name, emb_norm_max, epoch)
-                        writer_test.add_scalar('repeat_' + str(repeat) + '/emb_mean_'+dataset_name, emb_norm_mean, epoch)
-                        result_val.append(auc_val)
-                        result_test.append(auc_test)
 
 
-                result_val = np.array(result_val)
-                result_test = np.array(result_test)
-                results.append(result_test[np.argmax(result_val)])
+                # ========================================
+                # Final test: evaluate exactly once
+                # using the checkpoint with best validation AUC
+                # ========================================
+                if best_model_state is None:
+                    raise RuntimeError("No validation checkpoint was saved.")
+
+                model.load_state_dict(best_model_state)
+                model.eval()
+
+                auc_test = 0.0
+                loss_test = 0.0
+
+                with torch.no_grad():
+                    for id, data in enumerate(data_list):
+                        out = model(data)
+
+                        edge_mask_test = np.concatenate(
+                            (data.mask_link_positive_test, data.mask_link_negative_test),
+                            axis=-1
+                        )
+                        nodes_first = torch.index_select(
+                            out, 0, torch.from_numpy(edge_mask_test[0, :]).long().to(device)
+                        )
+                        nodes_second = torch.index_select(
+                            out, 0, torch.from_numpy(edge_mask_test[1, :]).long().to(device)
+                        )
+                        pred = torch.sum(nodes_first * nodes_second, dim=-1)
+
+                        label_positive = torch.ones(
+                            [data.mask_link_positive_test.shape[1]],
+                            dtype=pred.dtype
+                        )
+                        label_negative = torch.zeros(
+                            [data.mask_link_negative_test.shape[1]],
+                            dtype=pred.dtype
+                        )
+                        label = torch.cat((label_positive, label_negative)).to(device)
+
+                        loss_test += loss_func(pred, label).item()
+                        auc_test += roc_auc_score(
+                            label.detach().cpu().numpy(),
+                            out_act(pred).detach().cpu().numpy()
+                        )
+
+                loss_test /= len(data_list)
+                auc_test /= len(data_list)
+
+                print(
+                    f"Best Val AUC = {best_val_auc:.6f} "
+                    f"at epoch {best_epoch} | "
+                    f"Final Test AUC = {auc_test:.6f}"
+                )
+
+                writer_test.add_scalar(
+                    'repeat_' + str(repeat) + '/auc_' + dataset_name,
+                    auc_test,
+                    best_epoch
+                )
+                writer_test.add_scalar(
+                    'repeat_' + str(repeat) + '/loss_' + dataset_name,
+                    loss_test,
+                    best_epoch
+                )
+
+                results.append(auc_test)
             results = np.array(results)
             results_mean = np.mean(results).round(6)
             results_std = np.std(results).round(6)
