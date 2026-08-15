@@ -11,8 +11,8 @@ def os_arg():
     # args
     args = make_args()
     # print(args)
-    np.random.seed(123)
-    np.random.seed()
+    #np.random.seed(123)
+    #np.random.seed()
     writer_train = SummaryWriter(comment=args.task+'_'+args.model+'_'+args.comment+'_train')
     writer_val = SummaryWriter(comment=args.task+'_'+args.model+'_'+args.comment+'_val')
     writer_test = SummaryWriter(comment=args.task+'_'+args.model+'_'+args.comment+'_test')
