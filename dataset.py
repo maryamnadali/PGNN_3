@@ -146,7 +146,7 @@ def get_tg_dataset(args, dataset_name, use_cache=True, remove_feature=False):
             )
             d.dists = torch.from_numpy(dist).float()
 
-    return data_list
+        return data_list
 
     # -------------------- AttributedGraphDataset: Wiki / BlogCatalog / Facebook / Flickr --------------------
         # ----------------- AttributedGraphDataset: Wiki / BlogCatalog / Flickr / Facebook -----------------
