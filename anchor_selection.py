@@ -386,3 +386,166 @@ class SlotAnchorSelector(nn.Module):
             "A_st": A_st,
             "anchor_idx": anchor_idx,
         }
+
+class GlobalTopKSelector(nn.Module):
+    """
+    Global scalar scorer + Top-K ablation.
+
+    Same 2-layer GCN selector backbone as SlotAnchorSelector,
+    but every node receives only ONE global scalar score.
+
+    There are no role-specific slot queries and no joint
+    one-to-one Sinkhorn assignment.
+
+    Forward:
+        exactly K unique top-scoring singleton nodes.
+
+    Backward:
+        straight-through relaxation based on a shared
+        soft global ranking distribution.
+    """
+
+    def __init__(
+        self,
+        input_dim,
+        selector_dim,
+        temperature=1.0,
+    ):
+        super().__init__()
+
+        input_dim = int(input_dim)
+        selector_dim = int(selector_dim)
+
+        if input_dim < 1:
+            raise ValueError("input_dim must be >= 1.")
+
+        if selector_dim < 1:
+            raise ValueError("selector_dim must be >= 1.")
+
+        if temperature <= 0:
+            raise ValueError("temperature must be > 0.")
+
+        self.input_dim = input_dim
+        self.selector_dim = selector_dim
+        self.temperature = float(temperature)
+
+        # Same selector backbone as our proposed method
+        self.conv1 = GCNConv(input_dim, selector_dim)
+        self.conv2 = GCNConv(selector_dim, selector_dim)
+
+        # ONE global scalar scorer
+        self.score_head = nn.Linear(selector_dim, 1)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        self.conv1.reset_parameters()
+        self.conv2.reset_parameters()
+        self.score_head.reset_parameters()
+
+    def encode_nodes(self, x, edge_index):
+        h = self.conv1(x, edge_index)
+        h = F.relu(h)
+        h = self.conv2(h, edge_index)
+        return h
+
+    def forward(self, x, edge_index, k):
+
+        if x.dim() != 2:
+            raise ValueError(
+                "x must have shape [N, input_dim]."
+            )
+
+        n = int(x.size(0))
+        k = int(k)
+
+        if k < 1:
+            raise ValueError("k must be >= 1.")
+
+        if k > n:
+            raise ValueError(
+                f"Top-K singleton selection requires "
+                f"K <= N, got K={k}, N={n}."
+            )
+
+        # -------------------------------------------------
+        # 1) Shared GCN representation
+        # -------------------------------------------------
+        H_sel = self.encode_nodes(
+            x,
+            edge_index
+        )
+
+        # -------------------------------------------------
+        # 2) ONE scalar score per node
+        # -------------------------------------------------
+        scores = self.score_head(
+            H_sel
+        ).squeeze(-1)                     # [N]
+
+        # Stabilize score scale.
+        scores = scores / scores.norm(
+            p=2
+        ).clamp_min(1e-12)
+
+        # -------------------------------------------------
+        # 3) Hard global Top-K
+        # -------------------------------------------------
+        anchor_idx = torch.topk(
+            scores,
+            k=k,
+            largest=True,
+            sorted=True
+        ).indices                         # [K]
+
+        A_hard = torch.zeros(
+            k,
+            n,
+            dtype=x.dtype,
+            device=x.device
+        )
+
+        A_hard[
+            torch.arange(k, device=x.device),
+            anchor_idx
+        ] = 1.0
+
+        # -------------------------------------------------
+        # 4) Soft global ranking relaxation
+        #
+        # Unlike Slot-Joint:
+        #   - no role-specific distributions
+        #   - no Sinkhorn
+        #   - no column-capacity constraint
+        #
+        # All K rows share one global ranking distribution.
+        # -------------------------------------------------
+        probs = torch.softmax(
+            scores / self.temperature,
+            dim=0
+        )                                 # [N]
+
+        A_soft = probs.unsqueeze(0).expand(
+            k,
+            -1
+        )                                 # [K,N]
+
+        # -------------------------------------------------
+        # 5) Straight-through
+        # Forward = exact Top-K
+        # Backward = global soft scores
+        # -------------------------------------------------
+        A_st = (
+            A_hard
+            - A_soft.detach()
+            + A_soft
+        )
+
+        return {
+            "H_sel": H_sel,
+            "scores": scores,
+            "A_hard": A_hard,
+            "A_soft": A_soft,
+            "A_st": A_st,
+            "anchor_idx": anchor_idx,
+        }
