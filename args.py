@@ -59,6 +59,32 @@ def make_args():
     parser.add_argument('--repeat_num', dest='repeat_num', default=2, type=int) # 10
     parser.add_argument('--epoch_log', dest='epoch_log', default=10, type=int)
 
+    # shared anchor-budget rule
+    parser.add_argument(
+        '--anchor_budget',
+        dest='anchor_budget',
+        default='main',
+        type=str,
+        choices=['main', 'rule', 'progressive', 'fixed'],
+        help='Anchor budget: main=log2(N)^2, rule=log2(N), progressive=main/reduction, fixed=anchor_num'
+    )
+
+    parser.add_argument(
+        '--anchor_reduction',
+        dest='anchor_reduction',
+        default=2,
+        type=int,
+        choices=[2, 4, 8],
+        help='Reduction factor when anchor_budget=progressive'
+    )
+
+    parser.add_argument(
+        '--anchor_fixed_exact',
+        dest='anchor_fixed_exact',
+        action='store_true',
+        help='For fixed K, require N >= anchor_num instead of capping K at N'
+    )
+
     #anchor selection
     parser.add_argument('--anchor_method', dest='anchor_method', default='random', type=str,
                     choices=['random', 'degree', 'degree_coverage', 'enhanced_degree_coverage', 'degree_farthest',
