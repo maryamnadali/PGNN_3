@@ -57,6 +57,8 @@ if __name__ == '__main__':
             #     args.epoch_num = 401
             #     args.cache = True
             results = []
+
+            set_seed(args.base_seed)
             
     # ====== بارگذاری دیتا فقط یکبار برای هر دیتاست ======
             time1 = time.time()
@@ -96,6 +98,11 @@ if __name__ == '__main__':
             for repeat in range(args.repeat_num):
                 result_val = []
                 result_test = []
+                
+                repeat_seed = args.base_seed + repeat
+                set_seed(repeat_seed)
+
+                print(f"Repeat {repeat} | seed = {repeat_seed}")
         
                 # ==== ساخت مدل ====
                 if args.model in models_with_agg:
