@@ -1,6 +1,7 @@
 from sklearn.metrics import roc_auc_score
 from tensorboardX import SummaryWriter
 import copy
+from anchor_selection import compute_anchor_budget
 
 from args import *
 from model import *
@@ -87,8 +88,49 @@ if __name__ == '__main__':
             args.batch_size = min(args.batch_size, len(data_list))
             print('Anchor num {}, Batch size {}'.format(args.anchor_num, args.batch_size))
         
-            for i,data in enumerate(data_list):
-                preselect_anchor(data, layer_num=args.layer_num, anchor_num=args.anchor_num, device='cpu', args=args)
+            # =====================================================
+            # Anchor budget for the current dataset
+            # =====================================================
+            if args.anchor_method == 'slot_joint':
+            
+                K_per_graph = [
+                    compute_anchor_budget(
+                        num_nodes=data.num_nodes,
+                        mode=args.anchor_budget,
+                        fixed_k=args.anchor_num,
+                        reduction=args.anchor_reduction,
+                        exact_fixed=args.anchor_fixed_exact,
+                    )
+                    for data in data_list
+                ]
+            
+                slot_k_max = max(K_per_graph)
+            
+                print(
+                    "Slot-Joint anchor budget:",
+                    f"K_min={min(K_per_graph)},",
+                    f"K_max={slot_k_max}"
+                )
+            
+            else:
+                slot_k_max = None
+            
+            
+            # =====================================================
+            # Legacy anchor preselection
+            # slot_joint does NOT use preselect_anchor()
+            # =====================================================
+            for i, data in enumerate(data_list):
+            
+                if args.anchor_method != 'slot_joint':
+                    preselect_anchor(
+                        data,
+                        layer_num=args.layer_num,
+                        anchor_num=args.anchor_num,
+                        device='cpu',
+                        args=args
+                    )
+            
                 data = data.to(device)
                 data_list[i] = data
         
@@ -121,6 +163,18 @@ if __name__ == '__main__':
                         prob_factor=getattr(args, 'prob_factor', 5),
                         prob_min_top=getattr(args, 'prob_min_top', 1),
                         prob_context_mode=getattr(args, 'prob_context_mode', 'concat'),
+
+                        anchor_method=args.anchor_method,
+                        anchor_budget=args.anchor_budget,
+                        anchor_num=args.anchor_num,
+                        anchor_reduction=args.anchor_reduction,
+                        anchor_fixed_exact=args.anchor_fixed_exact,
+                        
+                        slot_k_max=slot_k_max,
+                        
+                        selector_dim=args.hidden_dim,
+                        slot_temperature=1.0,
+                        sinkhorn_iters=30,
                     ).to(device)
                 else:
                     model = locals()[args.model](
@@ -163,8 +217,17 @@ if __name__ == '__main__':
                     for id, data in enumerate(data_list[:effective_len]):
                         # --- انتخاب انکرها ---
                         # حالت‌های معمولی (random, degree, hyper, ...)
-                        if args.permute and args.anchor_method != 'learnable_hybrid':
-                            preselect_anchor(data, layer_num=args.layer_num, anchor_num=args.anchor_num, device=device, args=args)
+                        if (
+                            args.permute
+                            and args.anchor_method not in ['learnable_hybrid', 'slot_joint']
+                        ):
+                            preselect_anchor(
+                                data,
+                                layer_num=args.layer_num,
+                                anchor_num=args.anchor_num,
+                                device=device,
+                                args=args
+                            )
 
                         # حالت learnable_hybrid: refresh سبک مخصوص خودش
                         if args.anchor_method == 'learnable_hybrid':
