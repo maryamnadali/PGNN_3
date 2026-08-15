@@ -80,7 +80,7 @@ class PGNN_layer(nn.Module):
 
     def forward(self, feature, dists_max, dists_argmax=None, anchor_assignment=None):
         if self.dist_trainable:
-            dists_max = self.dist_compute(dists_max.unsqueeze(-1)).squeeze()
+            dists_max = self.dist_compute(dists_max.unsqueeze(-1)).squeeze(-1)
 
         if anchor_assignment is not None:
             # New singleton-anchor path:
@@ -116,7 +116,7 @@ class PGNN_layer(nn.Module):
             messages = subset_features * dists_max.unsqueeze(-1)          # [n, m, input_dim]
             self_feature = feature.unsqueeze(1).repeat(1, dists_max.shape[1], 1)  # [n, m, input_dim]
             messages = torch.cat((messages, self_feature), dim=-1)        # **concat** → [n, m, 2*input_dim]
-            messages = self.linear_hidden(messages).squeeze()             # 2d → d → [n, m, d]
+            messages = self.linear_hidden(messages)             # 2d → d → [n, m, d]
             messages = self.act(messages)                                 # [n, m, d]
 
         elif self.comb_mode == 'xattn':  # comb_mode == 'xattn'
