@@ -204,8 +204,8 @@ if __name__ == '__main__':
                             loss = loss + loss_aux
 
 
-
-                        # update
+                        """
+                        ### update old for multiple graphs ###
                         loss.backward()
                         if id % args.batch_size == args.batch_size-1:
                             if args.batch_size>1:
@@ -215,7 +215,30 @@ if __name__ == '__main__':
                                         p.grad /= args.batch_size
                             optimizer.step()
                             optimizer.zero_grad()
+                        """
+                        ### update new for multiple graphs ###
+                        loss.backward()
+                        
+                        is_batch_end = ((id + 1) % args.batch_size == 0)
+                        is_last_graph = (id == len(data_list) - 1)
+                        
+                        if is_batch_end or is_last_graph:
+                        
+                            if is_batch_end:
+                                current_batch_size = args.batch_size
+                            else:
+                                # تعداد گراف‌های باقی‌مانده در batch آخر
+                                current_batch_size = (id + 1) % args.batch_size
+                        
+                            if current_batch_size > 1:
+                                for p in model.parameters():
+                                    if p.grad is not None:
+                                        p.grad /= current_batch_size
+                        
+                            optimizer.step()
+                            optimizer.zero_grad()
 
+                    
 
                     if epoch % args.epoch_log == 0:
                         # evaluate
