@@ -347,6 +347,35 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
             device
         )
 
+    elif method == 'random_singleton':
+
+        # Shared anchor budget
+        K = compute_anchor_budget(
+            num_nodes=data.num_nodes,
+            mode=args.anchor_budget,
+            fixed_k=args.anchor_num,
+            reduction=args.anchor_reduction,
+            exact_fixed=args.anchor_fixed_exact,
+        )
+    
+        # Select exactly K unique random singleton anchors
+        selected_nodes = np.random.choice(
+            data.num_nodes,
+            size=K,
+            replace=False
+        )
+    
+        # Each anchor set contains exactly one real node
+        anchorset_id = [
+            np.array([int(node)], dtype=int)
+            for node in selected_nodes
+        ]
+    
+        data.dists_max, data.dists_argmax = get_dist_max(
+            anchorset_id,
+            data.dists,
+            device
+        )
     
     elif method == 'betweenness':
         import math
