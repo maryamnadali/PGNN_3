@@ -104,13 +104,49 @@ def get_tg_dataset(args, dataset_name, use_cache=True, remove_feature=False):
     # 5) محاسبه ماسک لینک + فاصله برای PGNN
     # ------------------------------------------
       for d in data_list:
-          get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True)
 
-          d.dists = torch.from_numpy(
-              precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
-          ).float()
+        if args.task == 'link':
+            # Link Prediction:
+            # positive edges are inferred from the original graph
+            get_link_mask(
+                d,
+                remove_ratio=args.remove_link_ratio,
+                resplit=True,
+                infer_link_positive=True
+            )
 
-      return data_list
+            # Distance must be computed ONLY from training-observable edges
+            dist = precompute_dist_data(
+                d.mask_link_positive_train,
+                d.num_nodes,
+                approximate=args.approximate
+            )
+            d.dists = torch.from_numpy(dist).float()
+
+            # The GNN/selector must also see ONLY the training graph
+            d.edge_index = torch.from_numpy(
+                duplicate_edges(d.mask_link_positive_train)
+            ).long()
+
+        elif args.task == 'link_pair':
+            # Keep the pair labels that were constructed above
+            get_link_mask(
+                d,
+                remove_ratio=args.remove_link_ratio,
+                resplit=True,
+                infer_link_positive=False
+            )
+
+            # Link-pair does NOT remove graph edges.
+            # Therefore distances use the full observed graph.
+            dist = precompute_dist_data(
+                d.edge_index.numpy(),
+                d.num_nodes,
+                approximate=args.approximate
+            )
+            d.dists = torch.from_numpy(dist).float()
+
+    return data_list
 
     # -------------------- AttributedGraphDataset: Wiki / BlogCatalog / Facebook / Flickr --------------------
         # ----------------- AttributedGraphDataset: Wiki / BlogCatalog / Flickr / Facebook -----------------
@@ -151,10 +187,40 @@ def get_tg_dataset(args, dataset_name, use_cache=True, remove_feature=False):
 
         # ---------- فاصله PGNN + ماسک لینک ----------
         for d in data_list:
-            get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True)
-            d.dists = torch.from_numpy(
-                precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
-            ).float()
+
+            if args.task == 'link':
+                get_link_mask(
+                    d,
+                    remove_ratio=args.remove_link_ratio,
+                    resplit=True,
+                    infer_link_positive=True
+                )
+
+                dist = precompute_dist_data(
+                    d.mask_link_positive_train,
+                    d.num_nodes,
+                    approximate=args.approximate
+                )
+                d.dists = torch.from_numpy(dist).float()
+
+                d.edge_index = torch.from_numpy(
+                    duplicate_edges(d.mask_link_positive_train)
+                ).long()
+
+            elif args.task == 'link_pair':
+                get_link_mask(
+                    d,
+                    remove_ratio=args.remove_link_ratio,
+                    resplit=True,
+                    infer_link_positive=False
+                )
+
+                dist = precompute_dist_data(
+                    d.edge_index.numpy(),
+                    d.num_nodes,
+                    approximate=args.approximate
+                )
+                d.dists = torch.from_numpy(dist).float()
 
         return data_list
 
@@ -200,9 +266,40 @@ def get_tg_dataset(args, dataset_name, use_cache=True, remove_feature=False):
 
         # فاصله PGNN + ماسک لینک
         for d in data_list:
-            get_link_mask(d, remove_ratio=args.remove_link_ratio, resplit=True)
-            dist = precompute_dist_data(d.edge_index.numpy(), d.num_nodes, approximate=args.approximate)
-            d.dists = torch.from_numpy(dist).float()
+
+            if args.task == 'link':
+                get_link_mask(
+                    d,
+                    remove_ratio=args.remove_link_ratio,
+                    resplit=True,
+                    infer_link_positive=True
+                )
+
+                dist = precompute_dist_data(
+                    d.mask_link_positive_train,
+                    d.num_nodes,
+                    approximate=args.approximate
+                )
+                d.dists = torch.from_numpy(dist).float()
+
+                d.edge_index = torch.from_numpy(
+                    duplicate_edges(d.mask_link_positive_train)
+                ).long()
+
+            elif args.task == 'link_pair':
+                get_link_mask(
+                    d,
+                    remove_ratio=args.remove_link_ratio,
+                    resplit=True,
+                    infer_link_positive=False
+                )
+
+                dist = precompute_dist_data(
+                    d.edge_index.numpy(),
+                    d.num_nodes,
+                    approximate=args.approximate
+                )
+                d.dists = torch.from_numpy(dist).float()
 
         return data_list
 
