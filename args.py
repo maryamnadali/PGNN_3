@@ -18,6 +18,8 @@ def make_args():
     parser.add_argument('--cpu', dest='gpu', action='store_false',
                         help='whether use cpu')
     parser.add_argument('--cuda', dest='cuda', default='0', type=str)
+    parser.add_argument('--base_seed', dest='base_seed', default=123, type=int,
+                        help='Base random seed for reproducible experiments')
 
 
     # dataset
