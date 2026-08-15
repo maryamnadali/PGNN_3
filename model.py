@@ -7,6 +7,7 @@ from torch_geometric.utils import add_self_loops, degree
 from torch.nn import init
 import pdb
 import math
+from anchor_selection import SlotAnchorSelector, compute_anchor_budget
 
 ####################### Basic Ops #############################
 class AnchorSelector(nn.Module):
@@ -442,6 +443,39 @@ class PGNN(torch.nn.Module):
         self.comb_mode = comb_mode
         self.prob_context_mode = kwargs.get('prob_context_mode', 'concat')
         self.neighbor_forward = neighbor_forward
+        # ================= Anchor Selection v1 =================
+        self.anchor_method = kwargs.get('anchor_method', 'random')
+        
+        self.anchor_budget = kwargs.get('anchor_budget', 'main')
+        self.anchor_num = kwargs.get('anchor_num', 64)
+        self.anchor_reduction = kwargs.get('anchor_reduction', 2)
+        self.anchor_fixed_exact = kwargs.get('anchor_fixed_exact', False)
+        
+        # Selector hyperparameters
+        self.selector_dim = kwargs.get('selector_dim', hidden_dim)
+        self.slot_temperature = kwargs.get('slot_temperature', 1.0)
+        self.sinkhorn_iters = kwargs.get('sinkhorn_iters', 30)
+        
+        # For multi-graph datasets this will be max(K_g)
+        self.slot_k_max = kwargs.get('slot_k_max', None)
+        
+        if self.anchor_method == 'slot_joint':
+            if self.slot_k_max is None:
+                raise ValueError(
+                    "slot_k_max must be provided when anchor_method='slot_joint'."
+                )
+        
+            self.anchor_selector = SlotAnchorSelector(
+                input_dim=input_dim,
+                selector_dim=self.selector_dim,
+                k_max=self.slot_k_max,
+                temperature=self.slot_temperature,
+                sinkhorn_iters=self.sinkhorn_iters,
+            )
+        # =======================================================
+
+
+                     
                      
         if layer_num == 1:
             hidden_dim = output_dim
@@ -466,6 +500,44 @@ class PGNN(torch.nn.Module):
         # ---------------------------------------------------------------------
 
     def forward(self, data):
+        # =====================================================
+        # New Slot-Joint Anchor Selection path
+        # =====================================================
+        if self.anchor_method == 'slot_joint':
+    
+            K = compute_anchor_budget(
+                num_nodes=data.num_nodes,
+                mode=self.anchor_budget,
+                fixed_k=self.anchor_num,
+                reduction=self.anchor_reduction,
+                exact_fixed=self.anchor_fixed_exact,
+            )
+    
+            selection = self.anchor_selector(
+                data.x,
+                data.edge_index,
+                k=K,
+            )
+    
+            anchor_assignment = selection["A_st"]   # [K, N]
+    
+            # R [N,N] @ A_ST.T [N,K] -> [N,K]
+            dists_for_pgnn = (
+                data.dists @ anchor_assignment.transpose(0, 1)
+            )
+    
+            # فقط برای debug/diagnostic؛ وارد training logic نمی‌شود
+            self.last_anchor_idx = selection["anchor_idx"].detach()
+    
+            dists_argmax_for_pgnn = None
+    
+        else:
+            # Original P-GNN and all legacy methods
+            anchor_assignment = None
+            dists_for_pgnn = data.dists_max
+            dists_argmax_for_pgnn = data.dists_argmax
+        # =====================================================
+        
         x = data.x
         if self.feature_pre:
             x = self.linear_pre(x)
@@ -490,18 +562,18 @@ class PGNN(torch.nn.Module):
             x = gate * x + (1.0 - gate) * neighbor_mean
         # =====================================================================
         
-        x_position, x = self.conv_first(x, data.dists_max, data.dists_argmax)
+        x_position, x = self.conv_first(x, dists_for_pgnn, dists_argmax=dists_argmax_for_pgnn, anchor_assignment=anchor_assignment,)
         if self.layer_num == 1:
             return x_position
         # x = F.relu(x) # Note: optional!
         if self.dropout:
             x = F.dropout(x, training=self.training)
         for i in range(self.layer_num-2):
-            _, x = self.conv_hidden[i](x, data.dists_max, data.dists_argmax)
+            _, x = self.conv_hidden[i](x, dists_for_pgnn, dists_argmax=dists_argmax_for_pgnn, anchor_assignment=anchor_assignment,)
             # x = F.relu(x) # Note: optional!
             if self.dropout:
                 x = F.dropout(x, training=self.training)
-        x_position, x = self.conv_out(x, data.dists_max, data.dists_argmax)
+        x_position, x = self.conv_out(x, dists_for_pgnn, dists_argmax=dists_argmax_for_pgnn, anchor_assignment=anchor_assignment,)
         x_position = F.normalize(x_position, p=2, dim=-1)
         return x_position
 
