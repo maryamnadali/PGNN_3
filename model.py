@@ -77,12 +77,38 @@ class PGNN_layer(nn.Module):
                 if m.bias is not None:
                     m.bias.data = init.constant_(m.bias.data, 0.0)
 
-    def forward(self, feature, dists_max, dists_argmax):
+    def forward(self, feature, dists_max, dists_argmax=None, anchor_assignment=None):
         if self.dist_trainable:
             dists_max = self.dist_compute(dists_max.unsqueeze(-1)).squeeze()
 
-        subset_features = feature[dists_argmax.flatten(), :]
-        subset_features = subset_features.reshape((dists_argmax.shape[0], dists_argmax.shape[1], feature.shape[1]))
+        if anchor_assignment is not None:
+            # New singleton-anchor path:
+            # anchor_assignment: [K, N]
+            # feature: [N, D]
+            # anchor_features: [K, D]
+            anchor_features = anchor_assignment @ feature
+
+            # Every node receives the same K selected anchor features.
+            # Result: [N, K, D]
+            subset_features = anchor_features.unsqueeze(0).expand(
+                feature.shape[0], -1, -1
+            )
+
+        else:
+            # Original P-GNN path -- unchanged
+            if dists_argmax is None:
+                raise ValueError(
+                    "dists_argmax is required when anchor_assignment is None."
+                )
+
+            subset_features = feature[dists_argmax.flatten(), :]
+            subset_features = subset_features.reshape(
+                (
+                    dists_argmax.shape[0],
+                    dists_argmax.shape[1],
+                    feature.shape[1],
+                )
+            )
         
         if self.comb_mode == 'concat':
             # ----- مسیر فعلی (بدون تغییر) -----
