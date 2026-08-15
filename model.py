@@ -7,7 +7,11 @@ from torch_geometric.utils import add_self_loops, degree
 from torch.nn import init
 import pdb
 import math
-from anchor_selection import SlotAnchorSelector, compute_anchor_budget
+from anchor_selection import (
+    SlotAnchorSelector,
+    GlobalTopKSelector,
+    compute_anchor_budget,
+)
 
 ####################### Basic Ops #############################
 class AnchorSelector(nn.Module):
@@ -460,6 +464,7 @@ class PGNN(torch.nn.Module):
         self.slot_k_max = kwargs.get('slot_k_max', None)
         
         if self.anchor_method == 'slot_joint':
+
             if self.slot_k_max is None:
                 raise ValueError(
                     "slot_k_max must be provided when anchor_method='slot_joint'."
@@ -471,6 +476,14 @@ class PGNN(torch.nn.Module):
                 k_max=self.slot_k_max,
                 temperature=self.slot_temperature,
                 sinkhorn_iters=self.sinkhorn_iters,
+            )
+        
+        elif self.anchor_method == 'global_topk':
+        
+            self.anchor_selector = GlobalTopKSelector(
+                input_dim=input_dim,
+                selector_dim=self.selector_dim,
+                temperature=self.slot_temperature,
             )
         # =======================================================
 
@@ -503,7 +516,7 @@ class PGNN(torch.nn.Module):
         # =====================================================
         # New Slot-Joint Anchor Selection path
         # =====================================================
-        if self.anchor_method == 'slot_joint':
+        if self.anchor_method in ['slot_joint', 'global_topk']:
     
             K = compute_anchor_budget(
                 num_nodes=data.num_nodes,
