@@ -91,8 +91,8 @@ if __name__ == '__main__':
             # =====================================================
             # Anchor budget for the current dataset
             # =====================================================
-            if args.anchor_method == 'slot_joint':
-            
+            if args.anchor_method in ['slot_joint', 'global_topk']:
+
                 K_per_graph = [
                     compute_anchor_budget(
                         num_nodes=data.num_nodes,
@@ -104,12 +104,15 @@ if __name__ == '__main__':
                     for data in data_list
                 ]
             
-                slot_k_max = max(K_per_graph)
+                if args.anchor_method == 'slot_joint':
+                    slot_k_max = max(K_per_graph)
+                else:
+                    slot_k_max = None
             
                 print(
-                    "Slot-Joint anchor budget:",
+                    f"{args.anchor_method} anchor budget:",
                     f"K_min={min(K_per_graph)},",
-                    f"K_max={slot_k_max}"
+                    f"K_max={max(K_per_graph)}"
                 )
             
             else:
@@ -122,7 +125,7 @@ if __name__ == '__main__':
             # =====================================================
             for i, data in enumerate(data_list):
             
-                if args.anchor_method != 'slot_joint':
+                if args.anchor_method not in ['slot_joint', 'global_topk']:
                     preselect_anchor(
                         data,
                         layer_num=args.layer_num,
@@ -147,6 +150,18 @@ if __name__ == '__main__':
                 set_seed(repeat_seed)
 
                 print(f"Repeat {repeat} | seed = {repeat_seed}")
+
+                # =====================================================
+                # Guard: new learnable anchor methods are PGNN-only
+                # =====================================================
+                if (
+                    args.anchor_method in ['slot_joint', 'global_topk']
+                    and args.model != 'PGNN'
+                ):
+                    raise ValueError(
+                        f"anchor_method='{args.anchor_method}' "
+                        "is currently implemented for model='PGNN' only."
+                    )
         
                 # ==== ساخت مدل ====
                 if args.model in models_with_agg:
@@ -219,7 +234,11 @@ if __name__ == '__main__':
                         # حالت‌های معمولی (random, degree, hyper, ...)
                         if (
                             args.permute
-                            and args.anchor_method not in ['learnable_hybrid', 'slot_joint']
+                            and args.anchor_method not in [
+                                'learnable_hybrid',
+                                'slot_joint',
+                                'global_topk'
+                            ]
                         ):
                             preselect_anchor(
                                 data,
