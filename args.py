@@ -86,10 +86,28 @@ def make_args():
     )
 
     #anchor selection
-    parser.add_argument('--anchor_method', dest='anchor_method', default='random', type=str,
-                    choices=['random', 'degree', 'degree_coverage', 'enhanced_degree_coverage', 'degree_farthest',
-                             'betweenness', 'eigenvector', 'hyper', 'learnable_hybrid', 'community'],
-                    help='anchor selection method')
+    parser.add_argument(
+        '--anchor_method', 
+        dest='anchor_method', 
+        default='random', 
+        type=str,
+        choices=[
+            'random',              # Original P-GNN random multi-scale anchor sets
+            'random_singleton',    # Random singleton ablation
+            'global_topk',         # Global Top-K ablation
+            'slot_joint',          # Our proposed method (GCN + K slots + Hungarian + Slack-Sinkhorn + ST)
+            'degree',
+            'degree_coverage',
+            'enhanced_degree_coverage',
+            'degree_farthest',
+            'betweenness',
+            'eigenvector',
+            'hyper',
+            'learnable_hybrid',
+            'community'
+        ],
+        help='anchor selection method')
+    
     #agg_s in paper
     parser.add_argument('--aggregation', dest='aggregation', default='mean', type=str,
                     choices=['mean', 'sum', 'max', 'min', 'mlp'],
