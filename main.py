@@ -548,8 +548,30 @@ if __name__ == '__main__':
             results_std = np.std(results).round(6)
             print('-----------------Final-------------------')
             print(results_mean, results_std)
-            with open('results/{}_{}_{}_layer{}_approximate{}.txt'.format(args.task,args.model,dataset_name,args.layer_num,args.approximate), 'w') as f:
-                f.write('{}, {}\n'.format(results_mean, results_std))
+            budget_tag = args.anchor_budget
+
+            if args.anchor_budget == 'progressive':
+                budget_tag += f"_r{args.anchor_reduction}"
+            
+            elif args.anchor_budget == 'fixed':
+                budget_tag += f"_k{args.anchor_num}"
+            
+            
+            result_file = (
+                f"results/"
+                f"{args.task}_"
+                f"{args.model}_"
+                f"{dataset_name}_"
+                f"{args.anchor_method}_"
+                f"{budget_tag}_"
+                f"layer{args.layer_num}_"
+                f"approximate{args.approximate}.txt"
+            )
+            
+            with open(result_file, 'w') as f:
+                f.write(f"runs={results.tolist()}\n")
+                f.write(f"mean={results_mean}\n")
+                f.write(f"std={results_std}\n")
 
     # export scalar data to JSON for external processing
     writer_train.export_scalars_to_json("./all_scalars.json")
