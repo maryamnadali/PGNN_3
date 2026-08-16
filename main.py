@@ -554,7 +554,16 @@ if __name__ == '__main__':
                 budget_tag += f"_r{args.anchor_reduction}"
             
             elif args.anchor_budget == 'fixed':
-                budget_tag += f"_k{args.anchor_num}"
+
+                fixed_mode = (
+                    "exact"
+                    if args.anchor_fixed_exact
+                    else "capped"
+                )
+            
+                budget_tag += (
+                    f"_k{args.anchor_num}_{fixed_mode}"
+                )
             
             
             result_file = (
