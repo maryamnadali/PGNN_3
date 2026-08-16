@@ -53,103 +53,195 @@ if __name__ == '__main__':
         print(f"\n🔁 Now running TASK: {task.upper()} on dataset(s): {datasets_name}\n")
 
         for dataset_name in datasets_name:
-            # if dataset_name in ['communities','grid']:
-            #     args.cache = False
-            # else:
-            #     args.epoch_num = 401
-            #     args.cache = True
+
             results = []
-
-            set_seed(args.base_seed)
-            
-    # ====== بارگذاری دیتا فقط یکبار برای هر دیتاست ======
-            time1 = time.time()
-            data_list = get_tg_dataset(args, dataset_name, use_cache=args.cache, remove_feature=args.rm_feature)
-            time2 = time.time()
-            print(dataset_name, 'load time',  time2-time1)
         
-            # ==== تعریف input_dim و output_dim فقط یکبار =====
-            input_dim = data_list[0].x.shape[1]
-            output_dim = args.output_dim
-        
-            num_features = input_dim
-            num_node_classes = None
-            num_graph_classes = None
-            if 'y' in data_list[0].__dict__ and data_list[0].y is not None:
-                num_node_classes = max([data.y.max().item() for data in data_list])+1
-            if 'y_graph' in data_list[0].__dict__ and data_list[0].y_graph is not None:
-                num_graph_classes = max([data.y_graph.numpy()[0] for data in data_list])+1
-            print('Dataset', dataset_name, 'Graph', len(data_list), 'Feature', num_features, 'Node Class', num_node_classes, 'Graph Class', num_graph_classes)
-            nodes = [data.num_nodes for data in data_list]
-            edges = [data.num_edges for data in data_list]
-            print('Node: max{}, min{}, mean{}'.format(max(nodes), min(nodes), sum(nodes)/len(nodes)))
-            print('Edge: max{}, min{}, mean{}'.format(max(edges), min(edges), sum(edges)/len(edges)))
-        
-            args.batch_size = min(args.batch_size, len(data_list))
-            print('Anchor num {}, Batch size {}'.format(args.anchor_num, args.batch_size))
-        
-            # =====================================================
-            # Anchor budget for the current dataset
-            # =====================================================
-            if args.anchor_method in ['slot_joint', 'global_topk']:
-
-                K_per_graph = [
-                    compute_anchor_budget(
-                        num_nodes=data.num_nodes,
-                        mode=args.anchor_budget,
-                        fixed_k=args.anchor_num,
-                        reduction=args.anchor_reduction,
-                        exact_fixed=args.anchor_fixed_exact,
-                    )
-                    for data in data_list
-                ]
-            
-                if args.anchor_method == 'slot_joint':
-                    slot_k_max = max(K_per_graph)
-                else:
-                    slot_k_max = None
-            
-                print(
-                    f"{args.anchor_method} anchor budget:",
-                    f"K_min={min(K_per_graph)},",
-                    f"K_max={max(K_per_graph)}"
-                )
-            
-            else:
-                slot_k_max = None
-            
-            
-            # =====================================================
-            # Legacy anchor preselection
-            # slot_joint does NOT use preselect_anchor()
-            # =====================================================
-            for i, data in enumerate(data_list):
-            
-                if args.anchor_method not in ['slot_joint', 'global_topk']:
-                    preselect_anchor(
-                        data,
-                        layer_num=args.layer_num,
-                        anchor_num=args.anchor_num,
-                        device='cpu',
-                        args=args
-                    )
-            
-                data = data.to(device)
-                data_list[i] = data
-        
-            # ====== لیست مدل‌هایی که aggregation می‌گیرن ======
             models_with_agg = ['PGNN', 'ATTSP']
         
-            # ====== حلقه تکرار (repeat) ======
+            # ============================================
+            # 5 independent runs
+            # ============================================
             for repeat in range(args.repeat_num):
+        
                 best_val_auc = -1.0
                 best_epoch = -1
                 best_model_state = None
-                
+        
+                # ----------------------------------------
+                # Seed of this run
+                # repeat 0 -> 123
+                # repeat 1 -> 124
+                # ...
+                # ----------------------------------------
                 repeat_seed = args.base_seed + repeat
                 set_seed(repeat_seed)
-
-                print(f"Repeat {repeat} | seed = {repeat_seed}")
+        
+                print(
+                    f"\n========================================"
+                )
+                print(
+                    f"Repeat {repeat} | seed = {repeat_seed}"
+                )
+                print(
+                    f"========================================\n"
+                )
+        
+                # ========================================
+                # NEW DATA + NEW SPLIT FOR THIS RUN
+                # ========================================
+                time1 = time.time()
+        
+                data_list = get_tg_dataset(
+                    args,
+                    dataset_name,
+                    use_cache=False,
+                    remove_feature=args.rm_feature
+                )
+        
+                time2 = time.time()
+        
+                print(
+                    dataset_name,
+                    'load time',
+                    time2 - time1
+                )
+        
+                # ========================================
+                # Dataset information
+                # ========================================
+                input_dim = data_list[0].x.shape[1]
+                output_dim = args.output_dim
+        
+                num_features = input_dim
+                num_node_classes = None
+                num_graph_classes = None
+        
+                if (
+                    'y' in data_list[0].__dict__
+                    and data_list[0].y is not None
+                ):
+                    num_node_classes = max(
+                        [data.y.max().item() for data in data_list]
+                    ) + 1
+        
+                if (
+                    'y_graph' in data_list[0].__dict__
+                    and data_list[0].y_graph is not None
+                ):
+                    num_graph_classes = max(
+                        [data.y_graph.numpy()[0] for data in data_list]
+                    ) + 1
+        
+                print(
+                    'Dataset',
+                    dataset_name,
+                    'Graph',
+                    len(data_list),
+                    'Feature',
+                    num_features,
+                    'Node Class',
+                    num_node_classes,
+                    'Graph Class',
+                    num_graph_classes
+                )
+        
+                nodes = [
+                    data.num_nodes
+                    for data in data_list
+                ]
+        
+                edges = [
+                    data.num_edges
+                    for data in data_list
+                ]
+        
+                print(
+                    'Node: max{}, min{}, mean{}'.format(
+                        max(nodes),
+                        min(nodes),
+                        sum(nodes) / len(nodes)
+                    )
+                )
+        
+                print(
+                    'Edge: max{}, min{}, mean{}'.format(
+                        max(edges),
+                        min(edges),
+                        sum(edges) / len(edges)
+                    )
+                )
+        
+                args.batch_size = min(
+                    args.batch_size,
+                    len(data_list)
+                )
+        
+                print(
+                    'Anchor num {}, Batch size {}'.format(
+                        args.anchor_num,
+                        args.batch_size
+                    )
+                )
+        
+                # ========================================
+                # Anchor budget
+                # ========================================
+                if args.anchor_method in [
+                    'slot_joint',
+                    'global_topk'
+                ]:
+        
+                    K_per_graph = [
+                        compute_anchor_budget(
+                            num_nodes=data.num_nodes,
+                            mode=args.anchor_budget,
+                            fixed_k=args.anchor_num,
+                            reduction=args.anchor_reduction,
+                            exact_fixed=args.anchor_fixed_exact,
+                        )
+                        for data in data_list
+                    ]
+        
+                    if args.anchor_method == 'slot_joint':
+                        slot_k_max = max(K_per_graph)
+                    else:
+                        slot_k_max = None
+        
+                    print(
+                        f"{args.anchor_method} anchor budget:",
+                        f"K_min={min(K_per_graph)},",
+                        f"K_max={max(K_per_graph)}"
+                    )
+        
+                else:
+                    slot_k_max = None
+        
+                # ========================================
+                # Anchor preselection
+                # ========================================
+                for i, data in enumerate(data_list):
+        
+                    if args.anchor_method not in [
+                        'slot_joint',
+                        'global_topk'
+                    ]:
+        
+                        preselect_anchor(
+                            data,
+                            layer_num=args.layer_num,
+                            anchor_num=args.anchor_num,
+                            device='cpu',
+                            args=args
+                        )
+        
+                    data = data.to(device)
+                    data_list[i] = data
+        
+                # ========================================
+                # From HERE continue with your current
+                # Guard + model creation + optimizer
+                # + training loop
+                # ========================================
 
                 # =====================================================
                 # Guard: new learnable anchor methods are PGNN-only
