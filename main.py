@@ -281,7 +281,7 @@ if __name__ == '__main__':
                         slot_k_max=slot_k_max,
                         
                         selector_dim=args.hidden_dim,
-                        slot_temperature=1.0,
+                        slot_temperature=args.slot_temperature,
                         sinkhorn_iters=30,
                     ).to(device)
                 else:
