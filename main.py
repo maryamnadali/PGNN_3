@@ -2,6 +2,7 @@ from sklearn.metrics import roc_auc_score
 from tensorboardX import SummaryWriter
 import copy
 from anchor_selection import compute_anchor_budget
+import secrets
 
 from args import *
 from model import *
@@ -73,7 +74,11 @@ if __name__ == '__main__':
                 # repeat 1 -> 124
                 # ...
                 # ----------------------------------------
-                repeat_seed = args.base_seed + repeat
+                if args.base_seed is None:
+                    repeat_seed = secrets.randbelow(2**31 - 1)
+                else:
+                    repeat_seed = args.base_seed + repeat
+                
                 set_seed(repeat_seed)
         
                 print(
