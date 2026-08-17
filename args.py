@@ -115,6 +115,14 @@ def make_args():
         type=float,
         help='Temperature for Slack-Sinkhorn soft anchor assignment'
     )
+
+    parser.add_argument(
+        '--sinkhorn_iters',
+        dest='sinkhorn_iters',
+        default=30,
+        type=int,
+        help='Number of Slack-Sinkhorn normalization iterations'
+    )
     
     #agg_s in paper
     parser.add_argument('--aggregation', dest='aggregation', default='mean', type=str,
