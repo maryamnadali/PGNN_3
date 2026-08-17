@@ -282,7 +282,7 @@ if __name__ == '__main__':
                         
                         selector_dim=args.hidden_dim,
                         slot_temperature=args.slot_temperature,
-                        sinkhorn_iters=30,
+                        sinkhorn_iters=args.sinkhorn_iters,
                     ).to(device)
                 else:
                     model = locals()[args.model](
