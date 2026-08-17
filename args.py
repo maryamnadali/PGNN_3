@@ -111,7 +111,7 @@ def make_args():
     parser.add_argument(
         '--slot_temperature',
         dest='slot_temperature',
-        default=1.0,
+        default=0.25,
         type=float,
         help='Temperature for Slack-Sinkhorn soft anchor assignment'
     )
