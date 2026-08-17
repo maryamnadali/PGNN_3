@@ -166,7 +166,7 @@ def test_k_equals_n():
         input_dim=x.size(1),
         selector_dim=6,
         k_max=n,
-        temperature=1.0,
+        temperature=0.25,
         sinkhorn_iters=50,
     )
 
