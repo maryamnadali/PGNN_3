@@ -30,7 +30,14 @@ from utils import precompute_dist_data, get_link_mask, duplicate_edges, deduplic
 def get_tg_dataset(args, dataset_name, use_cache=True, remove_feature=False):
     # "Cora", "CiteSeer" and "PubMed"
     if dataset_name in ['Cora', 'CiteSeer', 'PubMed']:
-        dataset = tg.datasets.Planetoid(root='datasets/' + dataset_name, name=dataset_name)
+        tg.datasets.Planetoid.url = (
+        'https://raw.githubusercontent.com/kimiyoung/planetoid/master/data'
+        )
+        
+        dataset = tg.datasets.Planetoid(
+            root='datasets/' + dataset_name,
+            name=dataset_name
+        )
         # ------------------ اضافه‌شده برای Link-Pair روی Planetoid ------------------
         if args.task == 'link_pair':
             data_list = []
