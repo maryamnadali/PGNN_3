@@ -69,10 +69,6 @@ if __name__ == '__main__':
                 best_model_state = None
         
                 # ----------------------------------------
-                # Seed of this run
-                # repeat 0 -> 123
-                # repeat 1 -> 124
-                # ...
                 # ----------------------------------------
                 if args.base_seed is None:
                     repeat_seed = secrets.randbelow(2**31 - 1)
