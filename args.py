@@ -107,6 +107,14 @@ def make_args():
             'community'
         ],
         help='anchor selection method')
+
+    parser.add_argument(
+        '--slot_temperature',
+        dest='slot_temperature',
+        default=1.0,
+        type=float,
+        help='Temperature for Slack-Sinkhorn soft anchor assignment'
+    )
     
     #agg_s in paper
     parser.add_argument('--aggregation', dest='aggregation', default='mean', type=str,
