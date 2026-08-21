@@ -48,7 +48,7 @@ if __name__ == '__main__':
                                  'PubMed', 'karate', 'Wiki','BlogCatalog','Facebook','Minesweeper','Tolokers']
             else:
                 datasets_name = ['communities', 'email', 'protein', 'Amazon-Computers','Amazon-Photo','Flickr',
-                                 'PubMed', 'karate', 'Wiki','BlogCatalog','Facebook','Minesweeper','Tolokers']
+                                 'PubMed', 'karate', 'Wiki','BlogCatalog','Minesweeper','Tolokers']
         else:
             datasets_name = [args.dataset]
         print(f"\n🔁 Now running TASK: {task.upper()} on dataset(s): {datasets_name}\n")
