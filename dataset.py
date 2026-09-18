@@ -172,20 +172,38 @@ def get_tg_dataset(args, dataset_name, use_cache=True, remove_feature=False):
         G = tg.utils.to_networkx(data, to_undirected=True)
 
         # ---------- link_pair ----------
+        # ---------- link_pair ----------
         if args.task == 'link_pair':
+        
+            # Facebook is multi-label and is not used for Link-Pair
+            if dataset_name == 'Facebook':
+                raise ValueError(
+                    "Facebook is multi-label and is excluded from task='link_pair'."
+                )
+        
+            # Wiki, BlogCatalog, and Flickr are single-label datasets
+            # Positive pair = two nodes with the same class label
             n = data.num_nodes
+            y = data.y.cpu().numpy()
+        
+            if y.ndim != 1:
+                raise ValueError(
+                    f"{dataset_name}: link_pair requires exactly one label "
+                    f"per node, but labels have shape {y.shape}."
+                )
+        
             label = np.zeros((n, n), dtype=int)
-
-            # چون label ندارد → نودهای داخل یک کامپوننت را مشابه درنظر می‌گیریم
-            for comp in nx.connected_components(G):
-                comp = list(comp)
-                for i in range(len(comp)):
-                    for j in range(i):
-                        label[comp[i], comp[j]] = 1
-
+        
+            for i in range(n):
+                for j in range(i):
+                    if y[i] == y[j]:
+                        label[i, j] = 1
+        
             edge_labels = [label]
+        
         else:
             edge_labels = [None]
+
 
         graphs = [G]
         features_list = [features]
