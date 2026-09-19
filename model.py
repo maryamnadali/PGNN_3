@@ -457,8 +457,8 @@ class PGNN(torch.nn.Module):
         
         # Selector hyperparameters
         self.selector_dim = kwargs.get('selector_dim', hidden_dim)
-        self.slot_temperature = kwargs.get('slot_temperature', 1.0)
-        self.sinkhorn_iters = kwargs.get('sinkhorn_iters', 30)
+        self.slot_temperature = kwargs.get('slot_temperature', 025)
+        self.sinkhorn_iters = kwargs.get('sinkhorn_iters', 10)
         
         # For multi-graph datasets this will be max(K_g)
         self.slot_k_max = kwargs.get('slot_k_max', None)
