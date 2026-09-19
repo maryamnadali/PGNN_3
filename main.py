@@ -475,7 +475,7 @@ if __name__ == '__main__':
                         writer_train.add_scalar('repeat_' + str(repeat) + '/auc_'+dataset_name, auc_train, epoch)
                         writer_train.add_scalar('repeat_' + str(repeat) + '/loss_'+dataset_name, loss_train, epoch)
                         writer_val.add_scalar('repeat_' + str(repeat) + '/auc_'+dataset_name, auc_val, epoch)
-                        writer_train.add_scalar('repeat_' + str(repeat) + '/loss_'+dataset_name, loss_val, epoch)
+                        writer_val.add_scalar('repeat_' + str(repeat) + '/loss_'+dataset_name, loss_val, epoch)
 
 
                 # ========================================
