@@ -148,7 +148,7 @@ def hungarian_max_assignment(scores):
     return A_hard, anchor_idx
 
 
-def slack_sinkhorn(scores, temperature=1.0, num_iters=30, eps=1e-12):
+def slack_sinkhorn(scores, temperature=0.25, num_iters=10, eps=1e-12):
     """
     Slack-Sinkhorn soft relaxation in log-space.
 
@@ -264,8 +264,8 @@ class SlotAnchorSelector(nn.Module):
         input_dim,
         selector_dim,
         k_max,
-        temperature=1.0,
-        sinkhorn_iters=30,
+        temperature=0.25,
+        sinkhorn_iters=10,
     ):
         super().__init__()
 
@@ -409,7 +409,7 @@ class GlobalTopKSelector(nn.Module):
         self,
         input_dim,
         selector_dim,
-        temperature=1.0,
+        temperature=0.25,
     ):
         super().__init__()
 
