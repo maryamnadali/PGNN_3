@@ -119,7 +119,7 @@ def make_args():
     parser.add_argument(
         '--sinkhorn_iters',
         dest='sinkhorn_iters',
-        default=30,
+        default=10,
         type=int,
         help='Number of Slack-Sinkhorn normalization iterations'
     )
