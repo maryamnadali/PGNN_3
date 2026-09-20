@@ -330,7 +330,8 @@ if __name__ == '__main__':
                             and args.anchor_method not in [
                                 'learnable_hybrid',
                                 'slot_joint',
-                                'global_topk'
+                                'global_topk',
+                                'agnn'
                             ]
                         ):
                             preselect_anchor(
