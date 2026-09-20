@@ -96,6 +96,7 @@ def make_args():
             'random_singleton',    # Random singleton ablation
             'global_topk',         # Global Top-K ablation
             'slot_joint',          # Our proposed method (GCN + K slots + Hungarian + Slack-Sinkhorn + ST)
+            'agnn',                # A-GNN: GA-MPCA anchor selection
             'degree',
             'degree_coverage',
             'enhanced_degree_coverage',
