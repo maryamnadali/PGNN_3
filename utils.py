@@ -822,6 +822,112 @@ def preselect_anchor(data, layer_num=1, anchor_num=32, anchor_size_num=4, device
         data.dists_max, data.dists_argmax = get_dist_max(anchorset_id, data.dists, device)
         return
 
+    elif method == 'agnn':
+        """
+        A-GNN baseline using GA-MPCA-style anchor selection.
+
+        For comparability with the A-GNN configuration used in the
+        PSGNN experiments, the anchor budget is:
+            K = floor(log2(N))
+
+        At every selection step:
+          1. Consider only currently uncovered nodes.
+          2. For each uncovered node, count its neighbors that are
+             also currently uncovered.
+          3. Select the node with the largest uncovered degree.
+          4. Mark the selected anchor and its 1-hop neighbors covered.
+          5. Repeat until K anchors have been selected or all nodes
+             have been covered.
+
+        Selected anchors are singleton anchor sets.
+        """
+
+        import math
+        from torch_geometric.utils import to_undirected
+
+        N = int(data.num_nodes)
+
+        # A-GNN anchor budget used in the PSGNN comparison:
+        # K = floor(log2(N))
+        K = max(1, int(math.log2(max(N, 2))))
+        K = min(K, N)
+
+        # Use the graph currently visible to the model.
+        # For Link Prediction, dataset.py already makes this
+        # the training-observable graph only.
+        edge_index = to_undirected(data.edge_index)
+
+        # Build adjacency sets for all nodes, including isolated ones.
+        adj = {i: set() for i in range(N)}
+
+        for u, v in edge_index.t().cpu().tolist():
+            u = int(u)
+            v = int(v)
+
+            if u == v:
+                continue
+
+            adj[u].add(v)
+            adj[v].add(u)
+
+        selected = []
+        covered = set()
+
+        while len(selected) < K:
+
+            # Nodes not yet covered by an already selected anchor.
+            uncovered = [
+                v for v in range(N)
+                if v not in covered
+            ]
+
+            # Original GA-MPCA terminates when all nodes are covered.
+            if not uncovered:
+                break
+
+            uncovered_set = set(uncovered)
+
+            # IMPORTANT:
+            # degree is recalculated with respect to the currently
+            # uncovered part of the graph, rather than using the
+            # original static degree.
+            best_node = None
+            best_uncovered_degree = -1
+
+            for v in uncovered:
+                uncovered_degree = sum(
+                    1
+                    for u in adj[v]
+                    if u in uncovered_set
+                )
+
+                # Strict ">" gives deterministic tie-breaking:
+                # the lower node ID encountered first is retained.
+                if uncovered_degree > best_uncovered_degree:
+                    best_uncovered_degree = uncovered_degree
+                    best_node = v
+
+            # Select the new A-GNN anchor.
+            selected.append(best_node)
+
+            # Cover the anchor itself and its 1-hop neighbors.
+            covered.add(best_node)
+            covered.update(adj[best_node])
+
+        # A-GNN uses singleton anchor nodes.
+        anchorset_id = [
+            [int(node)]
+            for node in selected
+        ]
+
+        data.dists_max, data.dists_argmax = get_dist_max(
+            anchorset_id,
+            data.dists,
+            device
+        )
+
+        return
+
     
         
     for i in range(anchor_size_num):
