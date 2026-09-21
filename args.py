@@ -131,7 +131,7 @@ def make_args():
                     help='Aggregation method for PGNN: mean, sum, max, min, mlp')
 
     #combination method to combine anchor and nodes
-    parser.add_argument('--comb_mode', dest='comb_mode', default='concat', type=str,
+    parser.add_argument('--comb_mode', dest='comb_mode', default='mean', type=str,
                     choices=['concat', 'xattn', 'probxattn'],
                     help='PGNN message combination: concat (concatination) or xattn (cross-attention) or probxattn (ProbSparse over nodes)')
     parser.add_argument('--num_heads', dest='num_heads', default=4, type=int, 
