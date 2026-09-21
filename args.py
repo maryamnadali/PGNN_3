@@ -134,6 +134,9 @@ def make_args():
     parser.add_argument('--comb_mode', dest='comb_mode', default='concat', type=str,
                     choices=['concat', 'xattn', 'probxattn'],
                     help='PGNN message combination: concat (concatination) or xattn (cross-attention) or probxattn (ProbSparse over nodes)')
+    parser.add_argument('--num_heads', dest='num_heads', default=4, type=int, 
+                    help='Number of attention heads for xattn/probxattn')
+    
     parser.add_argument('--prob_factor', dest='prob_factor', default=5, type=int,
                     help='c in c*ln(N) and c*ln(M) sampling for ProbSparse')
     parser.add_argument('--prob_min_top', dest='prob_min_top', default=1, type=int,
