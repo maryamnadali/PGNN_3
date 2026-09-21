@@ -91,8 +91,7 @@ class PGNN_layer(nn.Module):
         else:
             self.head_dim = None
         
-        self.head_dim = output_dim // self.num_heads
-        
+               
         
         # ==========================================================
         # Full / legacy cross-attention
