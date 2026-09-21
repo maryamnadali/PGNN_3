@@ -271,7 +271,7 @@ if __name__ == '__main__':
                         num_heads=getattr(args, 'num_heads', 4),
                         prob_factor=getattr(args, 'prob_factor', 5),
                         prob_min_top=getattr(args, 'prob_min_top', 1),
-                        prob_context_mode=getattr(args, 'prob_context_mode', 'concat'),
+                        prob_context_mode=getattr(args, 'prob_context_mode', 'mean'),
 
                         anchor_method=args.anchor_method,
                         anchor_budget=args.anchor_budget,
@@ -298,7 +298,7 @@ if __name__ == '__main__':
                         num_heads=getattr(args, 'num_heads', 4),
                         prob_factor=getattr(args, 'prob_factor', 5),
                         prob_min_top=getattr(args, 'prob_min_top', 1),
-                        prob_context_mode=getattr(args, 'prob_context_mode', 'concat'),
+                        prob_context_mode=getattr(args, 'prob_context_mode', 'mean'),
                     ).to(device)
         
                 
