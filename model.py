@@ -72,7 +72,7 @@ class PGNN_layer(nn.Module):
        
         self.num_heads = int(num_heads)
 
-        if self.comb_mode in ['xattn', 'probxattn']:
+        if self.comb_mode in ['xattn', 'fullxattn', 'probxattn']:
         
             if self.num_heads < 1:
                 raise ValueError(
@@ -116,7 +116,42 @@ class PGNN_layer(nn.Module):
                 bias=False
             )
         
+        # ==========================================================
+        # Full distance-aware cross-attention
+        # Dense counterpart of ProbSparse
+        # ==========================================================
+        elif self.comb_mode == 'fullxattn':
         
+            self.Wq = nn.Linear(
+                input_dim,
+                output_dim,
+                bias=False
+            )
+        
+            self.Wk = nn.Linear(
+                input_dim,
+                output_dim,
+                bias=False
+            )
+        
+            self.Wv = nn.Linear(
+                input_dim,
+                output_dim,
+                bias=False
+            )
+        
+            # beta starts from 1.0
+            raw_beta_init = math.log(
+                math.expm1(1.0)
+            )
+        
+            self.raw_beta = nn.Parameter(
+                torch.tensor(
+                    raw_beta_init,
+                    dtype=torch.float32
+                )
+            )
+                     
         # ==========================================================
         # Proposed distance-aware ProbSparse cross-attention
         # ==========================================================
@@ -206,6 +241,102 @@ class PGNN_layer(nn.Module):
             messages = Mh.reshape(n, m, d)                         # [n, m, d]
             messages = self.act(messages)
 
+
+        elif self.comb_mode == 'fullxattn':
+        
+            # ======================================================
+            # Full Distance-Aware Multi-Head Cross-Attention
+            # Same attention formulation as ProbSparse,
+            # but ALL node queries attend to ALL anchors.
+            # ======================================================
+        
+            N = feature.size(0)
+            K = subset_features.size(1)
+            H = self.num_heads
+            Dh = self.head_dim
+        
+            # ----------------------------------------------
+            # Q / K / V
+            # ----------------------------------------------
+            Q = self.Wq(
+                feature
+            ).reshape(
+                N,
+                H,
+                Dh
+            )  # [N, H, Dh]
+        
+            K_all = self.Wk(
+                subset_features
+            ).reshape(
+                N,
+                K,
+                H,
+                Dh
+            )  # [N, K, H, Dh]
+        
+            V_all = self.Wv(
+                subset_features
+            ).reshape(
+                N,
+                K,
+                H,
+                Dh
+            )  # [N, K, H, Dh]
+        
+            # ----------------------------------------------
+            # Content score
+            # QK / sqrt(Dh)
+            # ----------------------------------------------
+            scores = (
+                (
+                    Q.unsqueeze(1)
+                    * K_all
+                ).sum(dim=-1)
+                / math.sqrt(Dh)
+            )  # [N, K, H]
+        
+            # ----------------------------------------------
+            # Positive learnable beta
+            # ----------------------------------------------
+            beta = F.softplus(
+                self.raw_beta
+            )
+        
+            # ----------------------------------------------
+            # Position-aware additive bias
+            # ----------------------------------------------
+            scores = (
+                scores
+                + beta
+                * dists_max.unsqueeze(-1)
+            )  # [N, K, H]
+        
+            # ----------------------------------------------
+            # Independent anchor relevance
+            # ----------------------------------------------
+            attention = torch.sigmoid(
+                scores
+            )  # [N, K, H]
+        
+            # ----------------------------------------------
+            # Attention messages
+            # ----------------------------------------------
+            messages = (
+                V_all
+                * attention.unsqueeze(-1)
+            )  # [N, K, H, Dh]
+        
+            messages = messages.reshape(
+                N,
+                K,
+                H * Dh
+            )  # [N, K, output_dim]
+        
+            messages = F.relu(
+                messages
+            )
+        
         elif self.comb_mode == 'probxattn':
         
             # ======================================================
