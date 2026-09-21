@@ -537,7 +537,7 @@ class PGNN(torch.nn.Module):
         self.aggregation = aggregation
         self.comb_mode = comb_mode
         self.num_heads = int(num_heads)
-        self.prob_context_mode = kwargs.get('prob_context_mode', 'concat')
+        self.prob_context_mode = kwargs.get('prob_context_mode', 'mean')
         self.neighbor_forward = neighbor_forward
         # ================= Anchor Selection v1 =================
         self.anchor_method = kwargs.get('anchor_method', 'random')
