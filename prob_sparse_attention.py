@@ -162,37 +162,48 @@ class DistanceAwareProbSparseCrossAttention(nn.Module):
         positional_scores,
     ):
         """
-        Position-aware fallback context for inactive queries.
-
-        Desired definition:
-
-            C_v = mean_a [ s(v,a) * V_a ]
-
-        Because Wv has no bias:
-
-            mean_a [ s(v,a) * Wv(h_a) ]
-            =
-            Wv(
-                mean_a [ s(v,a) * h_a ]
-            )
-
-        Therefore we do NOT need to construct V for every N x K pair.
+        Position-aware mean fallback context for inactive queries.
+    
+        First compute the mean Value representation across anchors:
+    
+            V_mean(v) = mean_a V(v,a)
+    
+        Then preserve anchor-specific positional information:
+    
+            C(v,a) = s(v,a) * V_mean(v)
+    
+        Output shape:
+            [N, K, output_dim]
         """
-
-        weighted_anchor_features = (
-            anchor_features
-            * positional_scores.unsqueeze(-1)
-        )
-
-        weighted_mean = weighted_anchor_features.mean(
+    
+        # --------------------------------------------------
+        # Mean anchor representation
+        #
+        # Because Wv has no bias:
+        #
+        # mean_a Wv(h_a)
+        # =
+        # Wv(mean_a h_a)
+        # --------------------------------------------------
+        mean_anchor_features = anchor_features.mean(
             dim=1
         )  # [N, input_dim]
-
-        context_vector = self.Wv(
-            weighted_mean
+    
+        mean_value = self.Wv(
+            mean_anchor_features
         )  # [N, output_dim]
-
-        return context_vector
+    
+        # --------------------------------------------------
+        # Restore anchor-specific positional information
+        #
+        # C(v,a) = s(v,a) * V_mean(v)
+        # --------------------------------------------------
+        context = (
+            mean_value.unsqueeze(1)
+            * positional_scores.unsqueeze(-1)
+        )  # [N, K, output_dim]
+    
+        return context
 
     def forward(
         self,
@@ -285,19 +296,12 @@ class DistanceAwareProbSparseCrossAttention(nn.Module):
 
             # Position-aware mean fallback:
             #
-            # C_v = mean_a [s(v,a) V_a]
-            context_vector = self._build_mean_context(
+            # V_mean(v) = mean_a V(v,a)
+            # C(v,a)    = s(v,a) * V_mean(v)
+            messages = self._build_mean_context(
                 anchor_features,
                 positional_scores,
-            )  # [N, output_dim]
-
-            # PGNN expects one message slot per anchor.
-            messages = (
-                context_vector
-                .unsqueeze(1)
-                .expand(-1, K, -1)
-                .clone()
-            )
+            )  # [N, K, output_dim]
 
         else:
 
