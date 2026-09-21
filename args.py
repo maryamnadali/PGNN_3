@@ -132,8 +132,8 @@ def make_args():
 
     #combination method to combine anchor and nodes
     parser.add_argument('--comb_mode', dest='comb_mode', default='concat', type=str,
-                    choices=['concat', 'xattn', 'probxattn'],
-                    help='PGNN message combination: concat (concatination) or xattn (cross-attention) or probxattn (ProbSparse over nodes)')
+                    choices=['concat', 'xattn', 'fullxattn', 'probxattn'],
+                    help='PGNN message combination: concat (concatination) or xattn (cross-attention) or fullxattn (full cross-attention) or probxattn (ProbSparse over nodes)')
     parser.add_argument('--num_heads', dest='num_heads', default=4, type=int, 
                     help='Number of attention heads for xattn/probxattn')
     
