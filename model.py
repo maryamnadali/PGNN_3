@@ -69,14 +69,27 @@ class PGNN_layer(nn.Module):
         d_in = input_dim
         d_out = output_dim
         
-        self.num_heads = num_heads
+       
+        self.num_heads = int(num_heads)
 
-        if output_dim % self.num_heads != 0:
-            raise ValueError(
-                "output_dim must be divisible by num_heads. "
-                f"Got output_dim={output_dim}, "
-                f"num_heads={self.num_heads}."
-            )
+        if self.comb_mode in ['xattn', 'probxattn']:
+        
+            if self.num_heads < 1:
+                raise ValueError(
+                    "num_heads must be >= 1."
+                )
+        
+            if output_dim % self.num_heads != 0:
+                raise ValueError(
+                    "output_dim must be divisible by num_heads. "
+                    f"Got output_dim={output_dim}, "
+                    f"num_heads={self.num_heads}."
+                )
+        
+            self.head_dim = output_dim // self.num_heads
+        
+        else:
+            self.head_dim = None
         
         self.head_dim = output_dim // self.num_heads
         
