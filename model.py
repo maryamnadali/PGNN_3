@@ -12,6 +12,9 @@ from anchor_selection import (
     GlobalTopKSelector,
     compute_anchor_budget,
 )
+from prob_sparse_attention import (
+    DistanceAwareProbSparseCrossAttention
+)
 
 ####################### Basic Ops #############################
 class AnchorSelector(nn.Module):
@@ -67,14 +70,56 @@ class PGNN_layer(nn.Module):
         d_out = output_dim
         
         self.num_heads = num_heads
-        if self.comb_mode in ['xattn', 'probxattn']:
-            assert output_dim % self.num_heads == 0, "output_dim must be divisible by num_heads"
-            self.head_dim = output_dim // self.num_heads
-            self.Wq = nn.Linear(input_dim, output_dim, bias=False)
-            self.Wk = nn.Linear(input_dim, output_dim, bias=False)
-            self.Wv = nn.Linear(input_dim, output_dim, bias=False)
-            self.linear_hidden = nn.Linear(2 * input_dim, output_dim)
-            self.act = nn.ReLU()
+
+        if output_dim % self.num_heads != 0:
+            raise ValueError(
+                "output_dim must be divisible by num_heads. "
+                f"Got output_dim={output_dim}, "
+                f"num_heads={self.num_heads}."
+            )
+        
+        self.head_dim = output_dim // self.num_heads
+        
+        
+        # ==========================================================
+        # Full / legacy cross-attention
+        # ==========================================================
+        if self.comb_mode == 'xattn':
+        
+            self.Wq = nn.Linear(
+                input_dim,
+                output_dim,
+                bias=False
+            )
+        
+            self.Wk = nn.Linear(
+                input_dim,
+                output_dim,
+                bias=False
+            )
+        
+            self.Wv = nn.Linear(
+                input_dim,
+                output_dim,
+                bias=False
+            )
+        
+        
+        # ==========================================================
+        # Proposed distance-aware ProbSparse cross-attention
+        # ==========================================================
+        elif self.comb_mode == 'probxattn':
+        
+            self.prob_sparse_attn = (
+                DistanceAwareProbSparseCrossAttention(
+                    input_dim=input_dim,
+                    output_dim=output_dim,
+                    num_heads=self.num_heads,
+                    factor=self.prob_factor,
+                    min_top=self.prob_min_top,
+                    beta_init=1.0,
+                )
+            )
         
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -150,64 +195,84 @@ class PGNN_layer(nn.Module):
             messages = self.act(messages)
 
         elif self.comb_mode == 'probxattn':
-          # ----- 1) گیت فاصله و تشکیل subset انکرها برای هر نود -----
-          gated = subset_features * dists_max.unsqueeze(-1)   # [N, M, input_dim]
-
-          # ----- 2) Q, K, V مشترک (مثل xattn) -----
-          Q = self.Wq(feature)          # [N, D]
-          K = self.Wk(gated)            # [N, M, D]
-          V = self.Wv(gated)            # [N, M, D]
-          N, M, D = K.shape
-          dev = K.device
-
-          
-          # ----- 3) Context اولیه (قابل انتخاب: concat یا mean) -----
-          if getattr(self, "prob_context_mode", "concat") == "mean":
-              # === روش Informer: میانگین تمام Vها برای هر نود ===
-              context_init = V.mean(dim=1, keepdim=True).repeat(1, M, 1)  # [N, M, D]
-          else:
-              # === روش concat: ترکیب (node + anchor) با فشرده‌سازی 2d→d ===
-              context_init = torch.cat((gated, feature.unsqueeze(1).expand(-1, M, -1)), dim=-1)    # [N, M, 2*input_dim]
-              context_init = self.linear_hidden(context_init)  # [N, M, D]
-              context_init = self.act(context_init)           # [N, M, D]
-
-          messages = context_init.clone()  # [N, M, D]
-
-
-          # ----- 4) انتخاب نودهای فعال با ProbSparse (کاهش روی Query) -----
-          # نمونه‌گیری انکرها برای تقریب پراکندگی هر نود
-          factor = max(int(self.prob_factor), 1)
-          sample_k = min(M, max(int(factor * math.ceil(math.log(max(M, 2)))), self.prob_min_top))  # c*ln(M)
-          top_q   = min(N, max(int(factor * math.ceil(math.log(max(N, 2)))), self.prob_min_top))   # c*ln(N)
-
-          idx_sample = torch.randint(M, (N, sample_k), device=dev)           # [N, sample_k]
-          batch_idx  = torch.arange(N, device=dev).unsqueeze(1).expand(-1, sample_k)
-          # نمره‌ی تقریبی برای هر نود با زیرمجموعه‌ی کوچک انکرها
-          Q_exp = Q.unsqueeze(1).expand(-1, sample_k, -1)                     # [N, sample_k, D]
-          K_smp = K[batch_idx, idx_sample, :]                                  # [N, sample_k, D]
-          score_smp = (Q_exp * K_smp).sum(-1) / (D ** 0.5)                     # [N, sample_k]
-          # معیار پراکندگی برای هر نود (max - mean)
-          M_measure = score_smp.max(dim=1).values - score_smp.mean(dim=1)      # [N]
-          # انتخاب نودهای فعال
-          top_idx_nodes = torch.topk(M_measure, k=top_q, sorted=False).indices # [top_q]
-
-          # ----- 5) محاسبه‌ی attention دقیق فقط برای نودهای منتخب -----
-          Q_sel = Q[top_idx_nodes]           # [top_q, D]
-          K_sel = K[top_idx_nodes]           # [top_q, M, D]
-          V_sel = V[top_idx_nodes]           # [top_q, M, D]
-
-          # توجه: در xattn تو از sigmoid برای هر انکر استفاده کرده‌ای (نه softmax روی M).
-          # برای سازگاری، همین را نگه می‌داریم تا ابعاد و رفتار یکسان بماند.
-          scores = (Q_sel.unsqueeze(1) * K_sel).sum(-1) / (D ** 0.5)   # [top_q, M]
-          attn   = torch.sigmoid(scores)                               # [top_q, M]
-          msg_sel = V_sel * attn.unsqueeze(-1)                         # [top_q, M, D]
-
-          # ----- 6) جایگزینی پیام‌ها فقط برای نودهای منتخب -----
-          messages[top_idx_nodes] = self.act(msg_sel)                  # [N, M, D]
-
-
-        else:
-            raise NotImplementedError(f"Unknown comb_mode: {self.comb_mode}")
+        
+            # ======================================================
+            # Proposed:
+            # Distance-Aware Multi-Head ProbSparse
+            # Node-Anchor Cross-Attention
+            # ======================================================
+        
+            N = feature.size(0)
+            M = subset_features.size(1)
+        
+            # ------------------------------------------------------
+            # Fallback context for inactive queries
+            # ------------------------------------------------------
+            if self.prob_context_mode == 'concat':
+        
+                # P-GNN-style positional message.
+                #
+                # This is intentionally distance-gated because
+                # concat is the P-GNN-like fallback context.
+                gated_context = (
+                    subset_features
+                    * dists_max.unsqueeze(-1)
+                )  # [N, M, input_dim]
+        
+                self_feature = (
+                    feature
+                    .unsqueeze(1)
+                    .expand(-1, M, -1)
+                )  # [N, M, input_dim]
+        
+                context_init = torch.cat(
+                    (
+                        gated_context,
+                        self_feature
+                    ),
+                    dim=-1
+                )  # [N, M, 2*input_dim]
+        
+                context_init = self.linear_hidden(
+                    context_init
+                )  # [N, M, output_dim]
+        
+                context_init = self.act(
+                    context_init
+                )
+        
+            elif self.prob_context_mode == 'mean':
+        
+                # None tells the ProbSparse module to construct:
+                #
+                # mean_a [
+                #     positional_score(v,a) * V_a
+                # ]
+                #
+                # efficiently, without constructing full V
+                # for all N x M pairs.
+                context_init = None
+        
+            else:
+        
+                raise ValueError(
+                    "prob_context_mode must be "
+                    "'mean' or 'concat'."
+                )
+        
+            # ------------------------------------------------------
+            # Sparse distance-aware cross-attention
+            # ------------------------------------------------------
+            messages, prob_info = self.prob_sparse_attn(
+                node_features=feature,
+                anchor_features=subset_features,
+                positional_scores=dists_max,
+                context_init=context_init,
+            )
+        
+            # Diagnostic only.
+            # Does not participate in the loss.
+            self.last_prob_info = prob_info
 
         # print("subset_features=",len(subset_features))
         # print("dists_max=",dists_max.size())
@@ -436,15 +501,30 @@ class GIN(torch.nn.Module):
 
 
 class PGNN(torch.nn.Module):
-    def __init__(self, input_dim, feature_dim, hidden_dim, output_dim,
-                 feature_pre=True, layer_num=2, dropout=True, aggregation='mean', comb_mode='concat',
-                 prob_factor=5, prob_min_top=1, neighbor_forward=False, **kwargs):
+    def __init__(
+        self,
+        input_dim,
+        feature_dim,
+        hidden_dim,
+        output_dim,
+        feature_pre=True,
+        layer_num=2,
+        dropout=True,
+        aggregation='mean',
+        comb_mode='concat',
+        num_heads=4,
+        prob_factor=5,
+        prob_min_top=1,
+        neighbor_forward=False,
+        **kwargs
+    ):
         super(PGNN, self).__init__()
         self.feature_pre = feature_pre
         self.layer_num = layer_num
         self.dropout = dropout
         self.aggregation = aggregation
         self.comb_mode = comb_mode
+        self.num_heads = int(num_heads)
         self.prob_context_mode = kwargs.get('prob_context_mode', 'concat')
         self.neighbor_forward = neighbor_forward
         # ================= Anchor Selection v1 =================
@@ -494,16 +574,16 @@ class PGNN(torch.nn.Module):
             hidden_dim = output_dim
         if feature_pre:
             self.linear_pre = nn.Linear(input_dim, feature_dim)
-            self.conv_first = PGNN_layer(feature_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, prob_factor=prob_factor,
-                                         prob_min_top=prob_min_top, prob_context_mode=self.prob_context_mode,)
+            self.conv_first = PGNN_layer(feature_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, num_heads=self.num_heads,
+                                         prob_factor=prob_factor, prob_min_top=prob_min_top, prob_context_mode=self.prob_context_mode,)
         else:
-            self.conv_first = PGNN_layer(input_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, prob_factor=prob_factor,
-                                         prob_min_top=prob_min_top, prob_context_mode=self.prob_context_mode,)
+            self.conv_first = PGNN_layer(input_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, num_heads=self.num_heads,
+                                         prob_factor=prob_factor, prob_min_top=prob_min_top, prob_context_mode=self.prob_context_mode,)
         if layer_num>1:
-            self.conv_hidden = nn.ModuleList([PGNN_layer(hidden_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, prob_factor=prob_factor,
-                                         prob_min_top=prob_min_top, prob_context_mode=self.prob_context_mode,) for i in range(layer_num - 2)])
-            self.conv_out = PGNN_layer(hidden_dim, output_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, prob_factor=prob_factor,
-                                         prob_min_top=prob_min_top, prob_context_mode=self.prob_context_mode,)
+            self.conv_hidden = nn.ModuleList([PGNN_layer(hidden_dim, hidden_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, num_heads=self.num_heads,
+                                            prob_factor=prob_factor, prob_min_top=prob_min_top, prob_context_mode=self.prob_context_mode,) for i in range(layer_num - 2)])
+            self.conv_out = PGNN_layer(hidden_dim, output_dim, aggregation=self.aggregation, comb_mode=self.comb_mode, num_heads=self.num_heads,
+                                       prob_factor=prob_factor, prob_min_top=prob_min_top, prob_context_mode=self.prob_context_mode,)
 
         # ----------------- neighbor gate (only if enabled) -----------------
         if self.neighbor_forward:
