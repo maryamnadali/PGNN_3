@@ -39,7 +39,7 @@ class AnchorSelector(nn.Module):
 # # PGNN layer, only pick closest node for message passing
 class PGNN_layer(nn.Module):
     def __init__(self, input_dim, output_dim, dist_trainable=True, aggregation='mean', comb_mode='concat', 
-                 num_heads=4, prob_factor=5, prob_min_top=1, prob_context_mode='concat'):
+                 num_heads=4, prob_factor=5, prob_min_top=1, prob_context_mode='mean'):
         super(PGNN_layer, self).__init__()
         self.input_dim = input_dim
         self.dist_trainable = dist_trainable
