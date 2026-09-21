@@ -131,7 +131,7 @@ def make_args():
                     help='Aggregation method for PGNN: mean, sum, max, min, mlp')
 
     #combination method to combine anchor and nodes
-    parser.add_argument('--comb_mode', dest='comb_mode', default='mean', type=str,
+    parser.add_argument('--comb_mode', dest='comb_mode', default='concat', type=str,
                     choices=['concat', 'xattn', 'probxattn'],
                     help='PGNN message combination: concat (concatination) or xattn (cross-attention) or probxattn (ProbSparse over nodes)')
     parser.add_argument('--num_heads', dest='num_heads', default=4, type=int, 
@@ -142,8 +142,8 @@ def make_args():
     parser.add_argument('--prob_min_top', dest='prob_min_top', default=1, type=int,
                     help='Minimum number of sampled anchors / selected queries')
     #!python main.py --model PGNN --dataset communities --comb_mode probxattn --prob_context_mode mean
-    parser.add_argument('--prob_context_mode', dest='prob_context_mode', default='concat', type=str, choices=['concat', 'mean'],
-                    help='How to form initial context in ProbSparse: concat (default) or mean (Informer-style)')
+    parser.add_argument('--prob_context_mode', dest='prob_context_mode', default='mean', type=str, choices=['concat', 'mean'],
+                    help='How to form initial context in ProbSparse: concat (PGNN-style) or mean (Informer-style)')
 
     #neighbors in loss function
     # !python main.py --model PGNN --layer_num 2 --dataset communities --lambda_ns 0.1
