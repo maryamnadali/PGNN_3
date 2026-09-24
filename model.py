@@ -237,9 +237,23 @@ class PGNN_layer(nn.Module):
             score = (Kh * Qh.unsqueeze(1)).sum(-1) / (dh ** 0.5)   # [n, m, h]
             attn = torch.sigmoid(score).unsqueeze(-1)              # [n, m, h, 1]
 
-            Mh = Vh * attn                                         # [n, m, h, dh]
-            messages = Mh.reshape(n, m, d)                         # [n, m, d]
-            messages = self.act(messages)
+            Mh = Vh * attn
+
+            attention_messages = Mh.reshape(
+                n,
+                m,
+                d
+            )
+
+            # Simple residual connection
+            messages = (
+                attention_messages
+                + V
+            )
+
+            messages = self.act(
+                messages
+            )
 
 
         elif self.comb_mode == 'fullxattn':
@@ -285,58 +299,95 @@ class PGNN_layer(nn.Module):
             )  # [N, K, H, Dh]
         
             # ----------------------------------------------
-            # Content score
-            # QK / sqrt(Dh)
             # ----------------------------------------------
-            scores = (
+            # Content score: QK / sqrt(Dh)
+            # ----------------------------------------------
+            content_scores = (
                 (
                     Q.unsqueeze(1)
                     * K_all
                 ).sum(dim=-1)
                 / math.sqrt(Dh)
             )  # [N, K, H]
-        
+
             # ----------------------------------------------
             # Positive learnable beta
             # ----------------------------------------------
             beta = F.softplus(
                 self.raw_beta
             )
-        
+
             # ----------------------------------------------
-            # Position-aware additive bias
+            # Distance / positional term
             # ----------------------------------------------
-            scores = (
-                scores
-                + beta
+            position_bias = (
+                beta
                 * dists_max.unsqueeze(-1)
             )  # [N, K, H]
-        
+
+            # ----------------------------------------------
+            # Final attention score
+            # ----------------------------------------------
+            scores = (
+                content_scores
+                + position_bias
+            )  # [N, K, H]
+
             # ----------------------------------------------
             # Independent anchor relevance
             # ----------------------------------------------
             attention = torch.sigmoid(
                 scores
             )  # [N, K, H]
-        
+
             # ----------------------------------------------
-            # Attention messages
+            # Attention messages BEFORE ReLU
             # ----------------------------------------------
-            messages = (
+            messages_pre_relu = (
                 V_all
                 * attention.unsqueeze(-1)
             )  # [N, K, H, Dh]
-        
-            messages = messages.reshape(
+
+            messages_pre_relu = messages_pre_relu.reshape(
                 N,
                 K,
                 H * Dh
             )  # [N, K, output_dim]
-        
-            messages = F.relu(
-                messages
+
+
+            # ----------------------------------------------
+            # ----------------------------------------------
+            # ReLU on dense attention messages
+            # ----------------------------------------------
+            attention_messages = F.relu(
+                messages_pre_relu
             )
-        
+
+            # ----------------------------------------------
+            # Simple position-aware residual context
+            # ----------------------------------------------
+            mean_anchor_features = subset_features.mean(
+                dim=1
+            )  # [N, input_dim]
+
+            mean_value = self.Wv(
+                mean_anchor_features
+            )  # [N, output_dim]
+
+            position_context = (
+                mean_value.unsqueeze(1)
+                * dists_max.unsqueeze(-1)
+            )  # [N, K, output_dim]
+
+            # ----------------------------------------------
+            # Final dense messages
+            # ----------------------------------------------
+            messages = (
+                attention_messages
+                + position_context
+            )
+
+                    
         elif self.comb_mode == 'probxattn':
         
             # ======================================================
