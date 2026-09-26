@@ -21,6 +21,12 @@ class DistanceAwareProbSparseCrossAttention(nn.Module):
     6) ProbSparse query selection is performed independently per head.
     7) Only Top-q node queries receive full node-anchor attention.
 
+    Stage-1 optimization
+    --------------------
+    The mathematical formulation is unchanged. The previous per-head Python
+    loop, active-node union/mapping, and repeated index_copy operations are
+    replaced by a batched/vectorized implementation across attention heads.
+
     Parameters
     ----------
     input_dim : int
@@ -64,8 +70,8 @@ class DistanceAwareProbSparseCrossAttention(nn.Module):
         if self.output_dim % self.num_heads != 0:
             raise ValueError(
                 "output_dim must be divisible by num_heads. "
-                f"Got output_dim={self.output_dim}, "
-                f"num_heads={self.num_heads}."
+                f"Got output_dim={output_dim}, "
+                f"num_heads={num_heads}."
             )
 
         if self.factor < 1:
@@ -163,19 +169,19 @@ class DistanceAwareProbSparseCrossAttention(nn.Module):
     ):
         """
         Position-aware mean fallback context for inactive queries.
-    
+
         First compute the mean Value representation across anchors:
-    
+
             V_mean(v) = mean_a V(v,a)
-    
+
         Then preserve anchor-specific positional information:
-    
+
             C(v,a) = s(v,a) * V_mean(v)
-    
+
         Output shape:
             [N, K, output_dim]
         """
-    
+
         # --------------------------------------------------
         # Mean anchor representation
         #
@@ -188,11 +194,11 @@ class DistanceAwareProbSparseCrossAttention(nn.Module):
         mean_anchor_features = anchor_features.mean(
             dim=1
         )  # [N, input_dim]
-    
+
         mean_value = self.Wv(
             mean_anchor_features
         )  # [N, output_dim]
-    
+
         # --------------------------------------------------
         # Restore anchor-specific positional information
         #
@@ -202,7 +208,7 @@ class DistanceAwareProbSparseCrossAttention(nn.Module):
             mean_value.unsqueeze(1)
             * positional_scores.unsqueeze(-1)
         )  # [N, K, output_dim]
-    
+
         return context
 
     def forward(
@@ -326,7 +332,7 @@ class DistanceAwareProbSparseCrossAttention(nn.Module):
             K,
             H,
             Dh
-        )
+        )  # [N, K, H, Dh]
 
         # ==================================================
         # 3) Informer-style sparse budgets
@@ -410,7 +416,7 @@ class DistanceAwareProbSparseCrossAttention(nn.Module):
         )  # [N, H]
 
         # ==================================================
-        # 6) Top queries PER HEAD
+        # 6) Top queries PER HEAD -- unchanged mathematically
         # ==================================================
         top_idx_per_head = torch.topk(
             sparsity_measure,
@@ -420,166 +426,214 @@ class DistanceAwareProbSparseCrossAttention(nn.Module):
             sorted=False,
         ).indices  # [top_q, H]
 
-        # --------------------------------------------------
-        # Union of active nodes across heads.
+        # ==================================================
+        # 7) Stage-1 vectorized full attention for Top-q
         #
-        # K and V for all anchors are computed only for
-        # nodes that are active in at least one head.
+        # Previous implementation:
+        #   - torch.unique over active nodes
+        #   - global-node -> active-row mapping
+        #   - Python loop over heads
+        #   - one index_copy per head
+        #
+        # New implementation:
+        #   - preserve independent Top-q selection per head
+        #   - gather selected queries for all heads at once
+        #   - project only the weight slice belonging to each head
+        #   - compute all head-specific attention in one batched path
+        #   - scatter all updates back to the fallback context at once
+        #
+        # This changes implementation only, not the equations.
+        # ==================================================
+
+        # [H, top_q]
+        top_idx_h = (
+            top_idx_per_head
+            .transpose(0, 1)
+            .contiguous()
+        )
+
         # --------------------------------------------------
-        active_union = torch.unique(
-            top_idx_per_head.reshape(-1)
+        # Selected Q for every head
+        #
+        # Q_all:       [N, H, Dh]
+        # Q_by_head:   [H, N, Dh]
+        # Q_top:       [H, top_q, Dh]
+        # --------------------------------------------------
+        Q_by_head = Q_all.permute(
+            1,
+            0,
+            2
         )
 
-        active_anchor_features = anchor_features[
-            active_union
-        ]  # [U, K, input_dim]
+        Q_top = torch.gather(
+            Q_by_head,
+            dim=1,
+            index=top_idx_h.unsqueeze(-1).expand(
+                -1,
+                -1,
+                Dh
+            ),
+        )
 
-        K_active = self.Wk(
-            active_anchor_features
-        ).reshape(
-            active_union.numel(),
-            K,
+        # --------------------------------------------------
+        # Selected node-anchor features for every head
+        #
+        # [H, top_q, K, input_dim]
+        #
+        # A node may be selected by more than one head.
+        # Keeping the head dimension explicit removes the need
+        # for active_union and node_to_active.
+        # --------------------------------------------------
+        anchor_top = anchor_features[
+            top_idx_h
+        ]
+
+        # --------------------------------------------------
+        # Head-specific K / V projection
+        #
+        # Wk/Wv are ordinary output_dim x input_dim linear maps.
+        # Reshaping their weights into [H, Dh, input_dim] and
+        # applying the matching slice for each head is exactly
+        # equivalent to:
+        #
+        #   self.Wk(anchor_top)[..., head, :]
+        #   self.Wv(anchor_top)[..., head, :]
+        #
+        # but avoids computing unused output heads.
+        # --------------------------------------------------
+        Wk_by_head = self.Wk.weight.reshape(
             H,
-            Dh
+            Dh,
+            self.input_dim
         )
 
-        V_active = self.Wv(
-            active_anchor_features
-        ).reshape(
-            active_union.numel(),
-            K,
+        Wv_by_head = self.Wv.weight.reshape(
             H,
-            Dh
+            Dh,
+            self.input_dim
         )
 
-        # Map global node id -> active_union row id.
-        node_to_active = torch.full(
-            (N,),
-            -1,
-            dtype=torch.long,
-            device=device,
+        # [H, top_q, K, Dh]
+        K_top = torch.matmul(
+            anchor_top,
+            Wk_by_head.transpose(
+                -1,
+                -2
+            ).unsqueeze(1)
         )
 
-        node_to_active[active_union] = torch.arange(
-            active_union.numel(),
-            device=device,
+        # [H, top_q, K, Dh]
+        V_top = torch.matmul(
+            anchor_top,
+            Wv_by_head.transpose(
+                -1,
+                -2
+            ).unsqueeze(1)
         )
 
-        # ==================================================
-        # 7) Full node-anchor cross-attention only for
-        #    Top-q queries of each head
-        # ==================================================
-        updated_heads = []
+        # --------------------------------------------------
+        # Distance / positional scores for selected nodes
+        # [H, top_q, K]
+        # --------------------------------------------------
+        positional_top = positional_scores[
+            top_idx_h
+        ]
 
-        for head in range(H):
+        # --------------------------------------------------
+        # Full content score for selected queries
+        #
+        # score = QK/sqrt(Dh) + beta * positional_score
+        # --------------------------------------------------
+        scores_top = (
+            (
+                Q_top.unsqueeze(2)
+                * K_top
+            ).sum(dim=-1)
+            / math.sqrt(Dh)
+        )  # [H, top_q, K]
 
-            active_nodes_h = top_idx_per_head[
-                :,
-                head
-            ]  # [top_q]
+        scores_top = (
+            scores_top
+            + self.beta * positional_top
+        )
 
-            active_rows_h = node_to_active[
-                active_nodes_h
-            ]
+        # --------------------------------------------------
+        # Independent anchor relevance -- unchanged
+        # --------------------------------------------------
+        attention_top = torch.sigmoid(
+            scores_top
+        )  # [H, top_q, K]
 
-            Q_h = Q_all[
-                active_nodes_h,
-                head,
-                :
-            ]  # [top_q, Dh]
+        messages_top = (
+            V_top
+            * attention_top.unsqueeze(-1)
+        )  # [H, top_q, K, Dh]
 
-            K_h = K_active[
-                active_rows_h,
-                :,
-                head,
-                :
-            ]  # [top_q, K, Dh]
+        # Keep current PGNN behavior -- unchanged.
+        messages_top = F.relu(
+            messages_top
+        )
 
-            V_h = V_active[
-                active_rows_h,
-                :,
-                head,
-                :
-            ]  # [top_q, K, Dh]
+        # --------------------------------------------------
+        # Vectorized replacement of active-query contexts
+        #
+        # context_by_head: [H, N, K, Dh]
+        # scatter_index:   [H, top_q, K, Dh]
+        #
+        # torch.scatter is out-of-place here, so gradients flow
+        # both through the fallback context and messages_top.
+        # --------------------------------------------------
+        context_by_head = context_heads.permute(
+            2,
+            0,
+            1,
+            3
+        )  # [H, N, K, Dh]
 
-            # ----------------------------------------------
-            # Full content score
-            # ----------------------------------------------
-            scores_h = (
-                (
-                    Q_h.unsqueeze(1)
-                    * K_h
-                ).sum(dim=-1)
-                / math.sqrt(Dh)
-            )  # [top_q, K]
-
-            # ----------------------------------------------
-            # Distance-aware positional bias
-            # ----------------------------------------------
-            scores_h = (
-                scores_h
-                + self.beta
-                * positional_scores[
-                    active_nodes_h
-                ]
+        scatter_index = (
+            top_idx_h
+            .unsqueeze(-1)
+            .unsqueeze(-1)
+            .expand(
+                -1,
+                -1,
+                K,
+                Dh
             )
-
-            # ----------------------------------------------
-            # Independent anchor relevance.
-            #
-            # No Softmax competition across anchors.
-            # ----------------------------------------------
-            attention_h = torch.sigmoid(
-                scores_h
-            )  # [top_q, K]
-
-            messages_h = (
-                V_h
-                * attention_h.unsqueeze(-1)
-            )  # [top_q, K, Dh]
-
-            # Keep current PGNN behavior:
-            # nonlinear message activation.
-            messages_h = F.relu(
-                messages_h
-            )
-
-            # Current fallback values for this head.
-            base_head = context_heads[
-                :,
-                :,
-                head,
-                :
-            ]  # [N, K, Dh]
-
-            # Out-of-place replacement keeps autograd safe.
-            updated_head = base_head.index_copy(
-                0,
-                active_nodes_h,
-                messages_h,
-            )
-
-            updated_heads.append(
-                updated_head
-            )
-
-        # [N, K, H, Dh]
-        updated_heads = torch.stack(
-            updated_heads,
-            dim=2
         )
 
-        messages = updated_heads.reshape(
-            N,
-            K,
-            self.output_dim
+        updated_by_head = context_by_head.scatter(
+            dim=1,
+            index=scatter_index,
+            src=messages_top,
+        )  # [H, N, K, Dh]
+
+        # Back to the original layout:
+        # [H, N, K, Dh] -> [N, K, H, Dh] -> [N, K, output_dim]
+        messages = (
+            updated_by_head
+            .permute(1, 2, 0, 3)
+            .contiguous()
+            .reshape(
+                N,
+                K,
+                self.output_dim
+            )
         )
 
+        # --------------------------------------------------
+        # Diagnostics
+        #
+        # active_union is intentionally not constructed in the
+        # optimized forward path because torch.unique was one of
+        # the avoidable GPU overheads in the previous version.
+        # The key is retained as None for compatibility.
+        # --------------------------------------------------
         info = {
             "sample_k": sample_k,
             "top_q": top_q,
             "beta": self.beta.detach(),
-            "active_union": active_union.detach(),
+            "active_union": None,
             "top_idx_per_head": (
                 top_idx_per_head.detach()
             ),
